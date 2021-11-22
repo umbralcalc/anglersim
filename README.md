@@ -1,3 +1,3 @@
-# ecochange
+# popfish
 
-New project on managing ecological changes.
+Policy optimisation of freshwater fishing practices through Bayes-adaptive Markov decision processes.
