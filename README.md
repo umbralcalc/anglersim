@@ -1,3 +1,3 @@
 # popfish
 
-Policy optimisation of freshwater fishing practices through Bayes-adaptive Markov decision processes.
+Policy optimisation of freshwater fishing practices through Markov decision processes.
