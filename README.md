@@ -1,3 +1,3 @@
 # popfish
 
-Policy optimisation of freshwater fishing practices through Markov decision processes.
+(Po)licies (p)rotecting (fish) ecosystems: learning better policies for freshwater fishing practice through Markov decision processes.
