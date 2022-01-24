@@ -1,3 +1,3 @@
-# anglerpol
+# anglersim
 
-Angler policies protecting fish ecosystems: learning better policies for freshwater fishing practice through Markov decision processes.
+Angling from fish ecosystems: simulations of freshwater angling practices and their effect on UK fish populations.
