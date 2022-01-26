@@ -1,4 +1,4 @@
 *.csv
 *.zip
 data/*
-
+src/simulator_build/*
