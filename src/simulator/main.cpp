@@ -4,8 +4,5 @@
 /// @author  Robert J. Hardwick
 
 int
-main() {
-    int complete = 0;
-    return complete;
-}
+main() {int complete = 0; return complete;}
 
