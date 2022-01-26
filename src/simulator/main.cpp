@@ -3,6 +3,7 @@
 /// @file    main.cpp
 /// @author  Robert J. Hardwick
 
-int
-main() {int complete = 0; return complete;}
-
+int main() {
+  int complete = 0;
+  return complete;
+}
