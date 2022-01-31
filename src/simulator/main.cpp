@@ -5,6 +5,5 @@
 
 int main() {
   int complete = 0;
-  int other_complete = 0;
   return complete;
 }
