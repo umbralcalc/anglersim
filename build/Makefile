@@ -123,6 +123,33 @@ anglersim/fast:
 	$(MAKE) -f CMakeFiles/anglersim.dir/build.make CMakeFiles/anglersim.dir/build
 .PHONY : anglersim/fast
 
+fishpop.o: fishpop.cpp.o
+
+.PHONY : fishpop.o
+
+# target to build an object file
+fishpop.cpp.o:
+	$(MAKE) -f CMakeFiles/anglersim.dir/build.make CMakeFiles/anglersim.dir/fishpop.cpp.o
+.PHONY : fishpop.cpp.o
+
+fishpop.i: fishpop.cpp.i
+
+.PHONY : fishpop.i
+
+# target to preprocess a source file
+fishpop.cpp.i:
+	$(MAKE) -f CMakeFiles/anglersim.dir/build.make CMakeFiles/anglersim.dir/fishpop.cpp.i
+.PHONY : fishpop.cpp.i
+
+fishpop.s: fishpop.cpp.s
+
+.PHONY : fishpop.s
+
+# target to generate assembly for a file
+fishpop.cpp.s:
+	$(MAKE) -f CMakeFiles/anglersim.dir/build.make CMakeFiles/anglersim.dir/fishpop.cpp.s
+.PHONY : fishpop.cpp.s
+
 main.o: main.cpp.o
 
 .PHONY : main.o
@@ -159,6 +186,9 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... edit_cache"
 	@echo "... anglersim"
+	@echo "... fishpop.o"
+	@echo "... fishpop.i"
+	@echo "... fishpop.s"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"

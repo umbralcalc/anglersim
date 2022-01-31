@@ -74,12 +74,12 @@ clean: CMakeFiles/anglersim.dir/clean
 CMakeFiles/anglersim.dir/all:
 	$(MAKE) -f CMakeFiles/anglersim.dir/build.make CMakeFiles/anglersim.dir/depend
 	$(MAKE) -f CMakeFiles/anglersim.dir/build.make CMakeFiles/anglersim.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/robert/Code/anglersim/build/CMakeFiles --progress-num=1,2 "Built target anglersim"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/robert/Code/anglersim/build/CMakeFiles --progress-num=1,2,3 "Built target anglersim"
 .PHONY : CMakeFiles/anglersim.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/anglersim.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/robert/Code/anglersim/build/CMakeFiles 2
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/robert/Code/anglersim/build/CMakeFiles 3
 	$(MAKE) -f CMakeFiles/Makefile2 CMakeFiles/anglersim.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/robert/Code/anglersim/build/CMakeFiles 0
 .PHONY : CMakeFiles/anglersim.dir/rule
