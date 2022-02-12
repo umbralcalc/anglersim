@@ -7,11 +7,11 @@
 #IncludeRegexTransform: 
 
 /home/robert/Code/anglersim/src/simulator/fishpop.cpp
+cblas.h
+-
 cstdlib
 -
 vector
--
-cblas.h
 -
 
 /home/robert/Code/anglersim/src/simulator/main.cpp
