@@ -1,3 +1,6 @@
 {
-    "cmake.sourceDirectory": "${workspaceFolder}/src/simulator"
+    "cmake.sourceDirectory": "${workspaceFolder}/src/simulator",
+    "files.associations": {
+        "vector": "cpp"
+    }
 }

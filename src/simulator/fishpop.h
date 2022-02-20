@@ -8,9 +8,8 @@
 #include <cstdlib>
 #include <vector>
 
-
 /// @class fishpop
-/// @brief Representation of a whole fish population
+/// @brief Representation of a whole fish population.
 class fishpop
 {
   int numfish;

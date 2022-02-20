@@ -6,13 +6,13 @@
 
 #IncludeRegexTransform: 
 
-/home/robert/Code/anglersim/src/simulator/fishpop.cpp
-cblas.h
--
-cstdlib
--
-vector
--
-
 /home/robert/Code/anglersim/src/simulator/main.cpp
+iostream
+-
+xtensor/xarray.hpp
+-
+xtensor/xio.hpp
+-
+xtensor/xview.hpp
+-
 
