@@ -1,6 +1,11 @@
 {
     "cmake.sourceDirectory": "${workspaceFolder}/src/simulator",
     "files.associations": {
-        "vector": "cpp"
+        "vector": "cpp",
+        "*.tcc": "cpp",
+        "memory_resource": "cpp",
+        "random": "cpp",
+        "memory": "cpp",
+        "type_traits": "cpp"
     }
 }
