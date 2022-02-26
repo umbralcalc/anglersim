@@ -6,31 +6,3 @@
 
 #IncludeRegexTransform: 
 
-/home/robert/Code/anglersim/src/simulator/fishpop.cpp
-fishpop.h
-/home/robert/Code/anglersim/src/simulator/fishpop.h
-xtensor/xarray.hpp
--
-xtensor/xio.hpp
--
-xtensor/xview.hpp
--
-
-/home/robert/Code/anglersim/src/simulator/fishpop.h
-xtensor/xarray.hpp
--
-xtensor/xio.hpp
--
-xtensor/xview.hpp
--
-
-/home/robert/Code/anglersim/src/simulator/main.cpp
-iostream
--
-xtensor/xarray.hpp
--
-xtensor/xio.hpp
--
-xtensor/xview.hpp
--
-

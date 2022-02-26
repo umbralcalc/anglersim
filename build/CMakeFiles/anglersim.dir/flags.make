@@ -4,7 +4,7 @@
 # compile CXX with /bin/x86_64-linux-gnu-g++-9
 CXX_FLAGS = -g  
 
-CXX_DEFINES = 
+CXX_DEFINES = -DHAVE_CBLAS=1
 
 CXX_INCLUDES = 
 

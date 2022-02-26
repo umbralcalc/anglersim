@@ -10,7 +10,8 @@
 	{
 		"commands" : 
 		[
-			"add_executable"
+			"add_executable",
+			"add_definitions"
 		],
 		"files" : 
 		[
@@ -26,6 +27,12 @@
 				"file" : 0,
 				"line" : 7,
 				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 9,
+				"parent" : 0
 			}
 		]
 	},
@@ -36,6 +43,13 @@
 			[
 				{
 					"fragment" : "-g  "
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 2,
+					"define" : "HAVE_CBLAS=1"
 				}
 			],
 			"language" : "CXX",
@@ -58,6 +72,14 @@
 			{
 				"fragment" : "",
 				"role" : "flags"
+			},
+			{
+				"fragment" : "/usr/lib/x86_64-linux-gnu/libopenblas.so",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "/usr/lib/x86_64-linux-gnu/libopenblas.so",
+				"role" : "libraries"
 			}
 		],
 		"language" : "CXX"
