@@ -1,12 +1,12 @@
 [
 {
   "directory": "/home/robert/Code/anglersim/build",
-  "command": "/bin/x86_64-linux-gnu-g++-9  -DHAVE_CBLAS=1  -g   -o CMakeFiles/anglersim.dir/main.cpp.o -c /home/robert/Code/anglersim/src/simulator/main.cpp",
+  "command": "/bin/x86_64-linux-gnu-g++-9  -DHAVE_CBLAS=1 -I/home/robert/opt/openmpi/include   -pthread -g   -o CMakeFiles/anglersim.dir/main.cpp.o -c /home/robert/Code/anglersim/src/simulator/main.cpp",
   "file": "/home/robert/Code/anglersim/src/simulator/main.cpp"
 },
 {
   "directory": "/home/robert/Code/anglersim/build",
-  "command": "/bin/x86_64-linux-gnu-g++-9  -DHAVE_CBLAS=1  -g   -o CMakeFiles/anglersim.dir/fishpop.cpp.o -c /home/robert/Code/anglersim/src/simulator/fishpop.cpp",
+  "command": "/bin/x86_64-linux-gnu-g++-9  -DHAVE_CBLAS=1 -I/home/robert/opt/openmpi/include   -pthread -g   -o CMakeFiles/anglersim.dir/fishpop.cpp.o -c /home/robert/Code/anglersim/src/simulator/fishpop.cpp",
   "file": "/home/robert/Code/anglersim/src/simulator/fishpop.cpp"
 }
 ]

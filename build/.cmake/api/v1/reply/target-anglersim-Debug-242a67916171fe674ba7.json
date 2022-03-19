@@ -11,7 +11,8 @@
 		"commands" : 
 		[
 			"add_executable",
-			"add_definitions"
+			"add_definitions",
+			"include_directories"
 		],
 		"files" : 
 		[
@@ -33,6 +34,12 @@
 				"file" : 0,
 				"line" : 9,
 				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 26,
+				"parent" : 0
 			}
 		]
 	},
@@ -42,7 +49,7 @@
 			"compileCommandFragments" : 
 			[
 				{
-					"fragment" : "-g  "
+					"fragment" : " -pthread -g  "
 				}
 			],
 			"defines" : 
@@ -50,6 +57,13 @@
 				{
 					"backtrace" : 2,
 					"define" : "HAVE_CBLAS=1"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 3,
+					"path" : "/home/robert/opt/openmpi/include"
 				}
 			],
 			"language" : "CXX",
@@ -66,12 +80,16 @@
 		"commandFragments" : 
 		[
 			{
-				"fragment" : "-g",
+				"fragment" : "-pthread -g",
 				"role" : "flags"
 			},
 			{
-				"fragment" : "",
+				"fragment" : "-Wl,-rpath -Wl,/home/robert/opt/openmpi/lib -Wl,--enable-new-dtags -pthread",
 				"role" : "flags"
+			},
+			{
+				"fragment" : "-Wl,-rpath,/home/robert/opt/openmpi/lib",
+				"role" : "libraries"
 			},
 			{
 				"fragment" : "/usr/lib/x86_64-linux-gnu/libopenblas.so",
@@ -79,6 +97,10 @@
 			},
 			{
 				"fragment" : "/usr/lib/x86_64-linux-gnu/libopenblas.so",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "/home/robert/opt/openmpi/lib/libmpi.so",
 				"role" : "libraries"
 			}
 		],

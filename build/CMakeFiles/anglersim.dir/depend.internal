@@ -6,3 +6,5 @@ CMakeFiles/anglersim.dir/fishpop.cpp.o
  /home/robert/Code/anglersim/src/simulator/fishpop.h
 CMakeFiles/anglersim.dir/main.cpp.o
  /home/robert/Code/anglersim/src/simulator/main.cpp
+ /home/robert/opt/openmpi/include/mpi.h
+ /home/robert/opt/openmpi/include/mpi_portable_platform.h
