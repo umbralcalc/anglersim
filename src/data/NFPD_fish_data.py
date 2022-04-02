@@ -10,9 +10,7 @@ from src.typing.compound import *
 def retrieve_fish_counts() -> FWFishCounts:
     # Retrieve the fish counts data
     get_unzipped_files("NFPD_FWfish_counts")
-    df = pd.read_csv(
-        "data/" + UNZIPPED_FILES["NFPD_FWfish_counts"][0]
-    )
+    df = pd.read_csv("data/" + UNZIPPED_FILES["NFPD_FWfish_counts"][0])
     sites, species, surveys, counts = [], [], [], []
     for _, row in df.iterrows():
         sites.append(
@@ -38,10 +36,7 @@ def retrieve_fish_counts() -> FWFishCounts:
             )
         )
         species.append(Species(id=row.SPECIES_ID, name=row.SPECIES_NAME))
-        by_run = {
-            Run(str(i)) : RunCount(row["RUN" + str(i)])
-            for i in range(1, 7)
-        }
+        by_run = {Run(str(i)): RunCount(row["RUN" + str(i)]) for i in range(1, 7)}
         counts.append(Counts(by_run=by_run, date=dt.datetime(row.EVENT_DATE)))
     return FWFishCounts(
         sites=sites,

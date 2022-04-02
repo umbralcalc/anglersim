@@ -7,7 +7,6 @@ from src.typing.simple import *
 from src.typing.compound import *
 
 
-
 @dataclass
 class App:
     config: AppConfig

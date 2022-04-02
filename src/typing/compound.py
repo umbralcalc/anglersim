@@ -7,7 +7,6 @@ import datetime as dt
 from src.typing.simple import *
 
 
-
 @dataclass
 class Species:
     id: str
@@ -22,7 +21,7 @@ class Survey:
     length: float
     width: float
     area: float
-    species_selective: bool # important one here!
+    species_selective: bool  # important one here!
     third_party: bool
 
 
@@ -40,20 +39,20 @@ class Site:
 class Counts:
     by_run: Dict[Run, RunCount]
     date: dt.datetime
-    
 
 
 @dataclass
 class PlottableData:
     """base class to retrieve plotting data"""
 
-    def to_df(self) -> pd.DataFrame: 
+    def to_df(self) -> pd.DataFrame:
         return pd.DataFrame.from_dict(asdict(self))
 
 
 @dataclass
 class PlotConfig:
     """base class for plot configs"""
+
     data: PlottableData
     fig: Optional[go.Figure]
 
@@ -75,7 +74,6 @@ class FWFishCounts(PlottableData):
     species: List[Species]
     surveys: List[Survey]
     counts: List[Counts]
-
 
 
 @dataclass

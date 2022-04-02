@@ -78,5 +78,3 @@ def loglikeNegBinom(
     sol[np.isnan(sol)] = -np.inf
 
     return sol
-
-

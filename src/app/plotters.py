@@ -13,11 +13,9 @@ class FWFishCountPlotConfig(PlotConfig):
 
     def create_plot(self):
         df = self.data.to_df()
-        df['event_date'] = df.counts.apply(lambda x: x.date)
+        df["event_date"] = df.counts.apply(lambda x: x.date)
         for i in range(1, 7):
-            df['run' + str(i)] = df.counts.apply(
-                lambda x: x.by_run[Run(str(i))]
-            )
+            df["run" + str(i)] = df.counts.apply(lambda x: x.by_run[Run(str(i))])
 
         """
 
@@ -31,12 +29,12 @@ class FWFishCountPlotConfig(PlotConfig):
 
         # Plot raw counts
         for i in range(1, 7):
-            name = 'run' + str(i)
-            dat = df.sort_values('event_date').set_index('event_date')[name]
+            name = "run" + str(i)
+            dat = df.sort_values("event_date").set_index("event_date")[name]
             self.fig.add_trace(
                 go.Scatter(
-                    x=dat.index, 
-                    y=dat[name].values, 
+                    x=dat.index,
+                    y=dat[name].values,
                     mode="markers",
                     name=name,
                 ),

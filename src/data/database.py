@@ -14,15 +14,12 @@ from pathlib import Path
 from src.data.utils import LINKS, UNZIPPED_FILES
 
 
-
-def get_unzipped_files(name : str):
+def get_unzipped_files(name: str):
     # if the folder doesn't even exist then make it
     pth = Path("data")
     pth.mkdir(parents=True, exist_ok=True)
 
-    if not os.path.exists(
-        "data/" + name + ".zip"
-    ):
+    if not os.path.exists("data/" + name + ".zip"):
         bashCommand = "wget " + LINKS[name]
         bashCommand += " -O data/" + name + ".zip"
         process = subprocess.Popen(bashCommand.split())
@@ -33,8 +30,7 @@ def get_unzipped_files(name : str):
     for uzf in UNZIPPED_FILES[name]:
         bashCommand += " " + uzf
     process = subprocess.Popen(
-        bashCommand.split(), 
-        cwd='data/',
+        bashCommand.split(),
+        cwd="data/",
     )
     output, error = process.communicate()
-        

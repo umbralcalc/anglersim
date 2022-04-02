@@ -17,16 +17,16 @@ def main():
     st.markdown("# anglersim")
 
     app_config = _get_cached_data()
-    
+
     selected_mode = st.sidebar.selectbox(
         "Choose the app mode",
         [m.value for m in AppModes],
     )
     app_config.mode = AppModes(selected_mode)
-    
+
     app = App(app_config)
     app.run()
-    
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     main()
