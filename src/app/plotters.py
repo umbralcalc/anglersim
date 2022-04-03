@@ -1,6 +1,8 @@
 from dataclasses import dataclass
+import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import logging
 
 from src.typing.simple import *
 from src.typing.compound import *
@@ -12,10 +14,8 @@ class FWFishCountPlotConfig(PlotConfig):
         """implement this"""
 
     def create_plot(self):
-        df = self.data.to_df()
-        df["event_date"] = df.counts.apply(lambda x: x.date)
-        for i in range(1, 7):
-            df["run" + str(i)] = df.counts.apply(lambda x: x.by_run[Run(str(i))])
+        dfs = self.data.to_dfs()
+        logging.info("retrieved the fish counts plot data")
 
         """
 
@@ -28,9 +28,9 @@ class FWFishCountPlotConfig(PlotConfig):
         """
 
         # Plot raw counts
+        dat = dfs["counts"].sort_values("date").set_index("date")
         for i in range(1, 7):
-            name = "run" + str(i)
-            dat = df.sort_values("event_date").set_index("event_date")[name]
+            name = str(i)
             self.fig.add_trace(
                 go.Scatter(
                     x=dat.index,
@@ -39,6 +39,7 @@ class FWFishCountPlotConfig(PlotConfig):
                     name=name,
                 ),
             )
+        st.plotly_chart(self.fig)
 
         """
 
