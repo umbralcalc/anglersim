@@ -1,6 +1,7 @@
 from dataclasses import Field, dataclass, asdict, fields
 from typing import Any, Dict, List, Optional, Tuple, Union
 import pandas as pd
+import streamlit as st
 import plotly.graph_objects as go
 import datetime as dt
 
@@ -10,8 +11,11 @@ from src.typing.simple import *
 class DataframeableData:
     """base class for data which can turn into dataframes"""
 
+    def to_dict(self) -> dict:
+        return asdict(self)
+
     def to_df(self) -> pd.DataFrame:
-        return pd.DataFrame.from_dict(asdict(self))
+        return pd.DataFrame.from_dict(self.to_dict())
 
 
 @dataclass
@@ -43,26 +47,30 @@ class Sites(DataframeableData):
 
 
 @dataclass
-class Counts:
+class Counts(DataframeableData):
     by_run: Dict[Run, List[Union[int, Any]]]
     date: List[dt.datetime]
 
-    def to_df(self) -> pd.DataFrame:
+    def to_dict(self) -> dict:
         dat = {str(k): v for k, v in self.by_run.items()}
         dat["date"] = self.date
-        return pd.DataFrame.from_dict(dat)
+        return dat
 
 
 @dataclass
-class PlottableData:
+class PlottableData(DataframeableData):
     """base class to retrieve plotting data"""
 
-    def to_dfs(self) -> Dict[str, pd.DataFrame]:
+    def to_dict(self) -> dict:
         cls_fields: Tuple[Field, ...] = fields(self.__class__)
-        return {
-            field.name : getattr(getattr(self, field.name), "to_df")()
-            for field in cls_fields
-        }
+        overall_dict = {}
+        for field in cls_fields:
+            new_dict = getattr(getattr(self, field.name), "to_dict")()
+            new_dict = {key: new_dict[key] for key in new_dict}
+            overall_dict.update(
+                {field.name + '.' + key: new_dict[key] for key in new_dict}
+            )
+        return overall_dict
 
 
 @dataclass
@@ -74,14 +82,17 @@ class PlotConfig:
 
     def __post_init__(self):
         self.fig = go.Figure()
+        self._df = self.data.to_df()
 
     def set_user_settings(self):
         """call streamlit settings routine
         and set config attributes"""
-        pass
 
     def create_plot(self):
         """create the actual plot"""
+
+    def show(self):
+        st.plotly_chart(self.fig)
 
 
 @dataclass

@@ -14,6 +14,7 @@ class App:
     def _run(self, plot_config: PlotConfig):
         plot_config.set_user_settings()
         plot_config.create_plot()
+        plot_config.show()
 
     def run(self):
         if self.config.mode == AppModes.data_plotter:
