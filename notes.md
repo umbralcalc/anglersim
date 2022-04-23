@@ -2,8 +2,6 @@
 
 **To dos on the data side here:**
 
-**Refactor the underlying python code to make the typing much clearer and create a streamlit app instead of this Jupyter notebook to do all of this inference**
-
 1. Code up negative binomial MCMC to obtain the $\ln \langle n_i(a,t)\rangle$ values for each species as above.
 2. Code up fitting a Gaussian correlated posterior profile to the $\ln \langle n_i(a,t)\rangle$ posterior for each species. 
 3. Get new data on species death rates and recreational freshwater angling!!!
@@ -37,7 +35,8 @@ $$
 &+ \sum_{\forall i} \alpha_i(a_i)(n_i-1)\sum_{\forall i' \, {\sf prey}} n_{i'}P(\dots, n_i-1, n_{i'}, \dots, a_i, t)  \\
 &+ \sum_{\forall i} \beta_i(n_i+1) \sum_{\forall i' \, {\sf pred}} n_{i'}P(\dots, n_i+1, n_{i'}, \dots, a_i, t)  \\
 &+ \sum_{\forall i} \gamma_i(a_i)(n_i+1)P(\dots, n_i+1, \dots,  a_i, t) \\
-&- \sum_{\forall i}\bigg[ \Lambda_i(a_i) + n_i\mu_i(a_i) + \alpha_i(a_i)n_i \sum_{\forall i' \, {\sf prey}} n_{i'}  + \beta_in_i \sum_{\forall i' \, {\sf pred}} n_{i'} + \gamma_i(a_i)n_i \bigg] P(\dots, n_i, \dots, a_i, t) \,,
+&- \sum_{\forall i}\bigg[ \Lambda_i(a_i) + n_i\mu_i(a_i) + \alpha_i(a_i)n_i \sum_{\forall i' \, {\sf prey}} n_{i'}  \\
+& \qquad \quad + \beta_in_i \sum_{\forall i' \, {\sf pred}} n_{i'} + \gamma_i(a_i)n_i \bigg] P(\dots, n_i, \dots, a_i, t) \,,
 \end{align}
 $$
 

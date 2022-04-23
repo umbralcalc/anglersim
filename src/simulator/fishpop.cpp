@@ -1,7 +1,5 @@
-
 // Fish population representation in the simulation.
 /// @file    fishpop.cpp
-/// @author  Robert J. Hardwick
 
 #include "fishpop.h"
 #include <xtensor/xarray.hpp>
@@ -17,6 +15,10 @@ void fishpop::create(
   ages = init_ages;
   counts = init_counts;
   weights = init_weights;
+}
+
+void fishpop::set_ages(xt::xarray<int> new_ages) {
+  ages = new_ages;
 }
 
 xt::xarray<int> fishpop::get_ages() {

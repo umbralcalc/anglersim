@@ -6,31 +6,33 @@
 
 #IncludeRegexTransform: 
 
-/home/robert/Code/anglersim/src/simulator/main.cpp
-mpi.h
--
-iostream
--
+/home/robert/Code/anglersim/src/simulator/dynamicalpop.cpp
+fishpop.h
+/home/robert/Code/anglersim/src/simulator/fishpop.h
+dynamicalpop.h
+/home/robert/Code/anglersim/src/simulator/dynamicalpop.h
 xtensor/xarray.hpp
 -
 xtensor/xio.hpp
 -
 xtensor/xview.hpp
 -
-xtensor-blas/xlinalg.hpp
+
+/home/robert/Code/anglersim/src/simulator/dynamicalpop.h
+fishpop.h
+/home/robert/Code/anglersim/src/simulator/fishpop.h
+xtensor/xarray.hpp
+-
+xtensor/xio.hpp
+-
+xtensor/xview.hpp
 -
 
-/home/robert/opt/openmpi/include/mpi.h
-stddef.h
+/home/robert/Code/anglersim/src/simulator/fishpop.h
+xtensor/xarray.hpp
 -
-mpi_portable_platform.h
-/home/robert/opt/openmpi/include/mpi_portable_platform.h
-openmpi/ompi/mpi/cxx/mpicxx.h
-/home/robert/opt/openmpi/include/openmpi/ompi/mpi/cxx/mpicxx.h
-
-/home/robert/opt/openmpi/include/mpi_portable_platform.h
-omp.h
-/home/robert/opt/openmpi/include/omp.h
-omp.h
-/home/robert/opt/openmpi/include/omp.h
+xtensor/xio.hpp
+-
+xtensor/xview.hpp
+-
 

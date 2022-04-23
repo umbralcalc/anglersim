@@ -1,7 +1,6 @@
 
 // Main for the anglersim fish population simulator.
 /// @file    main.cpp
-/// @author  Robert J. Hardwick
 
 #include <mpi.h>
 #include <iostream>
