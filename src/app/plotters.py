@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 
 from src.typing.simple import *
 from src.typing.compound import *
@@ -19,15 +19,13 @@ class FWFishCountPlotConfig(PlotConfig):
         dat = self._df.sort_values("counts.date").set_index("counts.date")
         dat['counts.total'] = 0.0
         dat['counts.notnans'] = 0.0
+        ax = self.fig.add_subplot()
         for i in range(1, 7):
             name = "counts." + str(i)
-            self.fig.add_trace(
-                go.Scatter(
-                    x=dat.index,
-                    y=dat[name].values,
-                    mode="markers",
-                    name=name,
-                ),
+            ax.scatter(
+                x=dat.index,
+                y=dat[name].values,
+                label=name,
             )
             dat.loc[~(dat[name].isna()), 'counts.total'] += (
                 dat.loc[~(dat[name].isna()), name]
@@ -39,12 +37,10 @@ class FWFishCountPlotConfig(PlotConfig):
                 self._smooth_scale, min_periods=1, center=True
             ).mean()
         )
-        self.fig.add_trace(
-            go.Scatter(
-                x=smoothed_line.index,
-                y=smoothed_line.values,
-                name='counts.smoothed_mean',
-                line=dict(color='black'),
-            ),
+        ax.plot(
+            smoothed_line.index,
+            smoothed_line.values,
+            label='counts.smoothed_mean',
+            color='k',
         )
 

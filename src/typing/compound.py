@@ -2,7 +2,8 @@ from dataclasses import Field, dataclass, asdict, fields
 from typing import Any, Dict, List, Optional, Tuple, Union
 import pandas as pd
 import streamlit as st
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import seaborn as sns
 import datetime as dt
 
 from src.typing.simple import *
@@ -78,10 +79,11 @@ class PlotConfig:
     """base class for plot configs"""
 
     data: PlottableData
-    fig: Optional[go.Figure] = None
+    fig: Optional[plt.figure] = None
 
     def __post_init__(self):
-        self.fig = go.Figure()
+        sns.set()
+        self.fig = plt.figure()
         self._df = self.data.to_df()
 
     def set_user_settings(self):
@@ -92,7 +94,7 @@ class PlotConfig:
         """create the actual plot"""
 
     def show(self):
-        st.plotly_chart(self.fig)
+        st.pyplot(self.fig)
 
 
 @dataclass
