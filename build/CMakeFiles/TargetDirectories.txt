@@ -1,3 +1,0 @@
-/home/robert/Code/anglersim/build/CMakeFiles/rebuild_cache.dir
-/home/robert/Code/anglersim/build/CMakeFiles/edit_cache.dir
-/home/robert/Code/anglersim/build/CMakeFiles/anglersim.dir
