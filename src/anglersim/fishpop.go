@@ -1,41 +1,46 @@
 package main
 
 import (
-	"container/list"
-
+	"golang.org/x/exp/rand"
 	"gonum.org/v1/gonum/mat"
+	"gonum.org/v1/gonum/stat/distuv"
 )
 
-func getOne(i, j int, v float64) float64 {
-	return 1.0
+func drawUniformRandomDense(n, m int, src rand.Source) *mat.Dense {
+	data := make([]float64, n*m)
+	u := distuv.Uniform{
+		Min: 0.0,
+		Max: 1.0,
+		Src: src,
+	}
+	for i := range data {
+		data[i] = u.Rand()
+	}
+	return mat.NewDense(n, m, data)
 }
 
 type FishPop struct {
-	SpeciesNames *list.List
-	Counts       *mat.Dense
-	Ages         *mat.Dense
-	Weights      *mat.Dense
-	numSpecies   int
-	numReals     int
-	ones         *mat.Dense
+	Counts *mat.Dense
+	Ages   *mat.Dense
+	Params *PopParams
 }
 
-func NewFishPop(speciesNames *list.List, numReals int) FishPop {
-	numSpecies := speciesNames.Len()
-	ones := mat.NewDense(numSpecies, numReals, nil)
-	ones.Apply(getOne, ones)
+func NewFishPop(p *PopParams) FishPop {
 	f := FishPop{
-		SpeciesNames: speciesNames,
-		Counts:       mat.NewDense(numSpecies, numReals, nil),
-		Ages:         mat.NewDense(numSpecies, numReals, nil),
-		Weights:      mat.NewDense(numSpecies, numReals, nil),
-		numSpecies:   numSpecies,
-		numReals:     numReals,
-		ones:         ones,
+		Counts: mat.NewDense(p.numSpecies, p.numSubGroups, nil),
+		Ages:   mat.NewDense(p.numSpecies, p.numSubGroups, nil),
 	}
 	return f
 }
 
-func (f FishPop) AgeByYear() {
-	f.Ages.Add(f.Ages, f.ones)
+func (f FishPop) agePopulation(timeStep *mat.Dense) {
+	f.Ages.Add(f.Ages, timeStep)
+}
+
+func (f FishPop) addBirths(timeStep *mat.Dense, src rand.Source) {
+	r := drawUniformRandomDense(
+		f.Params.numSpecies,
+		f.Params.numSubGroups,
+		src,
+	)
 }
