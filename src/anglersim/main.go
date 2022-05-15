@@ -1,17 +1,18 @@
 package main
 
 import (
+	"container/list"
 	"fmt"
-	"math/rand"
-
-	"gonum.org/v1/gonum/mat"
 )
 
 func main() {
-	data := make([]float64, 36)
-	for i := range data {
-		data[i] = rand.NormFloat64()
-	}
-	a := mat.NewDense(6, 6, data)
-	fmt.Println(a)
+	speciesNames := list.New()
+	speciesNames.PushBack("Bream")
+	speciesNames.PushBack("Cod")
+	speciesNames.PushBack("Pike")
+	speciesNames.PushBack("Sturgeon")
+	f := NewFishPop(speciesNames, 10)
+	fmt.Println(f.Ages)
+	f.AgeByYear()
+	fmt.Println(f.Ages)
 }
