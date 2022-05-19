@@ -12,16 +12,16 @@ type Sim struct {
 }
 
 func (s Sim) genNewTimeStep(src rand.Source) *mat.Dense {
-	e := distuv.Exponential{
+	tStep := distuv.Exponential{
 		Rate: 1.0 / s.simParams.TimeStepScale,
 		Src:  src,
-	}
+	}.Rand()
 	data := make(
 		[]float64,
 		s.fishPop.Params.numSpecies*s.fishPop.Params.numSubGroups,
 	)
 	for i := range data {
-		data[i] = e.Rand()
+		data[i] = tStep
 	}
 	return mat.NewDense(
 		s.fishPop.Params.numSpecies,
