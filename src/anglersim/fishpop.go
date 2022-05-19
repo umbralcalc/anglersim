@@ -43,4 +43,15 @@ func (f FishPop) addBirths(timeStep *mat.Dense, src rand.Source) {
 		f.Params.numSubGroups,
 		src,
 	)
+	f.Counts.Apply(
+		func(i int, j int, v float64) float64 {
+			u := f.Params.BirthRates.At(i, j) * timeStep.At(i, j)
+			if r.At(i, j) < (u / (1.0 + u)) {
+				return v + 1.0
+			} else {
+				return v
+			}
+		},
+		f.Counts,
+	)
 }
