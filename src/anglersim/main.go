@@ -21,13 +21,13 @@ func createPopAndAgeIt(speciesNames *list.List) {
 		mat.NewDense(numSpecies, numSubGroups, data),
 		mat.NewDense(numSpecies, numSubGroups, data),
 	)
-	f := NewFishPop(&p)
-	fmt.Println(f.Ages)
+	f := NewFishPop(p)
+	// fmt.Println(f.Ages)
 	t := mat.NewDense(numSpecies, numSubGroups, data)
 	for i := 0; i < 10000; i++ {
-		f.agePopulation(t)
+		f.ApplyAgeing(t)
 	}
-	fmt.Println(f.Ages)
+	// fmt.Println(f.Ages)
 }
 
 func main() {

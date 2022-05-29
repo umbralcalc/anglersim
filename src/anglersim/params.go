@@ -21,9 +21,9 @@ type PopParams struct {
 func NewPopParams(
 	SpeciesNames *list.List,
 	BirthRates, DeathRates *mat.Dense,
-) PopParams {
+) *PopParams {
 	numSpecies, numSubGroups := BirthRates.Dims()
-	p := PopParams{
+	p := &PopParams{
 		SpeciesNames: SpeciesNames,
 		BirthRates:   BirthRates,
 		DeathRates:   DeathRates,
