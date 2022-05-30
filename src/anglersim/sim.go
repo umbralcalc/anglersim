@@ -7,6 +7,14 @@ import (
 	"gonum.org/v1/gonum/stat/distuv"
 )
 
+type settable interface {
+	Set(i, j int, v float64)
+}
+
+type doNothing struct{}
+
+func (d *doNothing) Set(i, j int, v float64) {}
+
 type Sim struct {
 	SimParams          *SimParams
 	FishPop            *FishPop
@@ -17,19 +25,21 @@ type Sim struct {
 	prevTimeStep       float64
 	numSpecies         int
 	numSubGroups       int
-	eventTypeLookup    []*mat.Dense
+	eventTypeLookup    []settable
 }
 
 func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
 	numSpecies, numSubGroups := fishPop.Params.BirthRates.Dims()
-	eventTypeLookup := make([]*mat.Dense, 3*numSubGroups)
+	eventTypeLookup := make([]settable, (3*numSubGroups)+1)
 	for i := range eventTypeLookup {
 		if i < numSubGroups {
 			eventTypeLookup[i] = fishPop.latestBirths
 		} else if i < 2*numSubGroups {
 			eventTypeLookup[i] = fishPop.latestDeaths
-		} else {
+		} else if i < 3*numSubGroups {
 			eventTypeLookup[i] = fishPop.latestPredations
+		} else {
+			eventTypeLookup[i] = &doNothing{}
 		}
 	}
 	ones := make([]float64, numSpecies*numSubGroups)
@@ -38,6 +48,8 @@ func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
 	}
 	cumEventProbsDense := mat.NewDense(numSpecies, 3*numSubGroups, nil)
 	// loop over rows here and precompute the normalised cumulative probabilites
+	// note that these can only be precomputed up to a missing normalisation that
+	// comes from the drawn timestep size
 	src := rand.NewSource(seed)
 	s := &Sim{
 		SimParams: simParams,
@@ -69,15 +81,22 @@ func (s *Sim) genNewTimeStep() {
 	s.timeStepDense.Scale(newTimeStep/s.prevTimeStep, s.timeStepDense)
 }
 
+func (s *Sim) genCumulativeEventProbs() *mat.Dense {
+	cumEventProbs := s.cumEventProbsDense
+	// implement normalisation update using new timestep here!!!
+	return cumEventProbs
+}
+
 // core of the model
 func (s *Sim) genEvents() {
 	// only an independent event each step for each population as a whole
 	s.FishPop.latestBirths.Zero()
 	s.FishPop.latestDeaths.Zero()
 	s.FishPop.latestPredations.Zero()
+	cumEventProbs := s.genCumulativeEventProbs()
 	for i := 0; i < s.numSpecies; i++ {
 		j := floats.Within(
-			s.cumEventProbsDense.RawRowView(i),
+			cumEventProbs.RawRowView(i),
 			s.uniDist.Rand(),
 		)
 		s.eventTypeLookup[j].Set(i, j, 1.0)
