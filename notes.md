@@ -28,6 +28,8 @@ The goal here is to calibrate a fully-stochastic causal model which evolves the 
 
 The master equation for the proposed stochastic simulation, which is inspired by the famous [Lotka-Volterra system](https://en.wikipedia.org/wiki/Lotka%E2%80%93Volterra_equations), takes the form
 
+**NEED TO REWRITE THIS EQUATION SO THAT THE BIRTH RATES ARE DENSITY-DEPENDENT + DEPEND ON THE SUM OVER COUNTS IN THE WHOLE POPULATION WHICH IS ABOVE REPRODUCTIVE AGE IN EACH SPECIES' CASE + THERE NEED TO BE COUPLING TERMS BETWEEN THE AGE GROUPS - MIGHT DECIDE THAT IT'S EASIER TO MAKE THIS COMPONENT DETERMINISTIC? (ONLY A SLIGHT REFACTOR OF THE CODE CURRENTLY)**
+
 $$
 \begin{align}
 \bigg[ \frac{\partial}{\partial a_i} + \frac{\partial}{\partial t}\bigg] P(\dots, n_i, \dots, a_i, t) &= \sum_{\forall i}\Lambda_i(a_i)P(\dots, n_i-1, \dots, a_i, t) \\
