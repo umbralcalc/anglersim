@@ -24,29 +24,29 @@ type Sim struct {
 	cumEventProbsDense *mat.Dense
 	prevTimeStep       float64
 	numSpecies         int
-	numSubGroups       int
+	numAgeGroups       int
 	eventTypeLookup    []settable
 }
 
 func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
-	numSpecies, numSubGroups := fishPop.Params.BirthRates.Dims()
-	eventTypeLookup := make([]settable, (3*numSubGroups)+1)
+	numSpecies, numAgeGroups := fishPop.Params.BirthRates.Dims()
+	eventTypeLookup := make([]settable, (3*numAgeGroups)+1)
 	for i := range eventTypeLookup {
-		if i < numSubGroups {
+		if i < numAgeGroups {
 			eventTypeLookup[i] = fishPop.latestBirths
-		} else if i < 2*numSubGroups {
+		} else if i < 2*numAgeGroups {
 			eventTypeLookup[i] = fishPop.latestDeaths
-		} else if i < 3*numSubGroups {
+		} else if i < 3*numAgeGroups {
 			eventTypeLookup[i] = fishPop.latestPredations
 		} else {
 			eventTypeLookup[i] = &doNothing{}
 		}
 	}
-	ones := make([]float64, numSpecies*numSubGroups)
+	ones := make([]float64, numSpecies*numAgeGroups)
 	for i := range ones {
 		ones[i] = 1.0
 	}
-	cumEventProbsDense := mat.NewDense(numSpecies, 3*numSubGroups, nil)
+	cumEventProbsDense := mat.NewDense(numSpecies, 3*numAgeGroups, nil)
 	// loop over rows here and precompute the normalised cumulative probabilites
 	// note that these can only be precomputed up to a missing normalisation that
 	// comes from the drawn timestep size
@@ -63,11 +63,11 @@ func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
 			Max: 1.0,
 			Src: src,
 		},
-		timeStepDense:      mat.NewDense(numSpecies, numSubGroups, ones),
+		timeStepDense:      mat.NewDense(numSpecies, numAgeGroups, ones),
 		cumEventProbsDense: cumEventProbsDense,
 		prevTimeStep:       1.0,
 		numSpecies:         numSpecies,
-		numSubGroups:       numSubGroups,
+		numAgeGroups:       numAgeGroups,
 		eventTypeLookup:    eventTypeLookup,
 	}
 	return s

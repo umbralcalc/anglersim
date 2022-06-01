@@ -16,13 +16,13 @@ type FishPop struct {
 
 func NewFishPop(p *PopParams) *FishPop {
 	f := &FishPop{
-		Counts:           mat.NewDense(p.numSpecies, p.numSubGroups, nil),
-		Ages:             mat.NewDense(p.numSpecies, p.numSubGroups, nil),
+		Counts:           mat.NewDense(p.numSpecies, p.numAgeGroups, nil),
+		Ages:             mat.NewDense(p.numSpecies, p.numAgeGroups, nil),
 		Time:             0.0,
 		Params:           p,
-		latestDeaths:     mat.NewDense(p.numSpecies, p.numSubGroups, nil),
-		latestBirths:     mat.NewDense(p.numSpecies, p.numSubGroups, nil),
-		latestPredations: mat.NewDense(p.numSpecies, p.numSubGroups, nil),
+		latestDeaths:     mat.NewDense(p.numSpecies, p.numAgeGroups, nil),
+		latestBirths:     mat.NewDense(p.numSpecies, p.numAgeGroups, nil),
+		latestPredations: mat.NewDense(p.numSpecies, p.numAgeGroups, nil),
 	}
 	return f
 }

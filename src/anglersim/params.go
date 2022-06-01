@@ -15,20 +15,20 @@ type PopParams struct {
 	BirthRates   *mat.Dense
 	DeathRates   *mat.Dense
 	numSpecies   int
-	numSubGroups int
+	numAgeGroups int
 }
 
 func NewPopParams(
 	SpeciesNames *list.List,
 	BirthRates, DeathRates *mat.Dense,
 ) *PopParams {
-	numSpecies, numSubGroups := BirthRates.Dims()
+	numSpecies, numAgeGroups := BirthRates.Dims()
 	p := &PopParams{
 		SpeciesNames: SpeciesNames,
 		BirthRates:   BirthRates,
 		DeathRates:   DeathRates,
 		numSpecies:   numSpecies,
-		numSubGroups: numSubGroups,
+		numAgeGroups: numAgeGroups,
 	}
 	return p
 }
