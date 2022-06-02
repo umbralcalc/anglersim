@@ -10,6 +10,8 @@ type SimParams struct {
 	TimeStepScale float64
 }
 
+// population parameters to setup the simulation - note in particular
+// that the age groups are split into yearly bins by default
 type PopParams struct {
 	SpeciesNames *list.List
 	BirthRates   *mat.Dense

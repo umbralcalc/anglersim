@@ -20,9 +20,9 @@ type Sim struct {
 	FishPop            *FishPop
 	expDist            *distuv.Exponential
 	uniDist            *distuv.Uniform
-	timeStepDense      *mat.Dense
+	src                rand.Source
+	timeStep           float64
 	cumEventProbsDense *mat.Dense
-	prevTimeStep       float64
 	numSpecies         int
 	numAgeGroups       int
 	eventTypeLookup    []settable
@@ -63,9 +63,9 @@ func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
 			Max: 1.0,
 			Src: src,
 		},
-		timeStepDense:      mat.NewDense(numSpecies, numAgeGroups, ones),
+		src:                src,
+		timeStep:           0.0,
 		cumEventProbsDense: cumEventProbsDense,
-		prevTimeStep:       1.0,
 		numSpecies:         numSpecies,
 		numAgeGroups:       numAgeGroups,
 		eventTypeLookup:    eventTypeLookup,
@@ -74,11 +74,9 @@ func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
 }
 
 func (s *Sim) genNewTimeStep() {
-	newTimeStep := s.expDist.Rand()
-	s.FishPop.Time += newTimeStep
-	// trick to make the update quicker - worth checking that the ratio numbers
-	// don't get too extreme but otherwise it should work :)
-	s.timeStepDense.Scale(newTimeStep/s.prevTimeStep, s.timeStepDense)
+	// note that time units are all in years
+	s.timeStep = s.expDist.Rand()
+	s.FishPop.StepTime(s.timeStep)
 }
 
 func (s *Sim) genCumulativeEventProbs() *mat.Dense {
@@ -106,7 +104,7 @@ func (s *Sim) genEvents() {
 func (s *Sim) Step() {
 	s.genNewTimeStep()
 	s.genEvents()
-	s.FishPop.ApplyAgeing(s.timeStepDense)
+	s.FishPop.ApplyAgeing(s.src)
 	s.FishPop.ApplyDeaths()
 	s.FishPop.ApplyBirths()
 	s.FishPop.ApplyPredations()
