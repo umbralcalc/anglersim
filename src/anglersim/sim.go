@@ -16,16 +16,18 @@ type doNothing struct{}
 func (d *doNothing) Set(i, j int, v float64) {}
 
 type Sim struct {
-	SimParams          *SimParams
-	FishPop            *FishPop
-	expDist            *distuv.Exponential
-	uniDist            *distuv.Uniform
-	src                rand.Source
-	timeStep           float64
-	cumEventProbsDense *mat.Dense
-	numSpecies         int
-	numAgeGroups       int
-	eventTypeLookup    []settable
+	SimParams            *SimParams
+	FishPop              *FishPop
+	expDist              *distuv.Exponential
+	uniDist              *distuv.Uniform
+	src                  rand.Source
+	reciTimeStepVecDense *mat.VecDense
+	timeStep             float64
+	prevTimeStep         float64
+	cumEventProbsDense   *mat.Dense
+	numSpecies           int
+	numAgeGroups         int
+	eventTypeLookup      []settable
 }
 
 func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
@@ -42,14 +44,11 @@ func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
 			eventTypeLookup[i] = &doNothing{}
 		}
 	}
-	ones := make([]float64, numSpecies*numAgeGroups)
+	ones := make([]float64, numSpecies)
 	for i := range ones {
 		ones[i] = 1.0
 	}
-	cumEventProbsDense := mat.NewDense(numSpecies, 3*numAgeGroups, nil)
-	// loop over rows here and precompute the normalised cumulative probabilites
-	// note that these can only be precomputed up to a missing normalisation that
-	// comes from the drawn timestep size
+	cumEventProbsDense := mat.NewDense(numSpecies, (3*numAgeGroups)+1, nil)
 	src := rand.NewSource(seed)
 	s := &Sim{
 		SimParams: simParams,
@@ -63,12 +62,14 @@ func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
 			Max: 1.0,
 			Src: src,
 		},
-		src:                src,
-		timeStep:           0.0,
-		cumEventProbsDense: cumEventProbsDense,
-		numSpecies:         numSpecies,
-		numAgeGroups:       numAgeGroups,
-		eventTypeLookup:    eventTypeLookup,
+		src:                  src,
+		timeStep:             1.0,
+		prevTimeStep:         1.0,
+		reciTimeStepVecDense: mat.NewVecDense(numSpecies, ones),
+		cumEventProbsDense:   cumEventProbsDense,
+		numSpecies:           numSpecies,
+		numAgeGroups:         numAgeGroups,
+		eventTypeLookup:      eventTypeLookup,
 	}
 	return s
 }
@@ -77,15 +78,41 @@ func (s *Sim) genNewTimeStep() {
 	// note that time units are all in years
 	s.timeStep = s.expDist.Rand()
 	s.FishPop.StepTime(s.timeStep)
+	s.reciTimeStepVecDense.ScaleVec(s.prevTimeStep/s.timeStep, s.reciTimeStepVecDense)
 }
 
 func (s *Sim) genCumulativeEventProbs() *mat.Dense {
-	cumEventProbs := s.cumEventProbsDense
-	// implement normalisation update using new timestep here!!!
-	return cumEventProbs
+	// these are the main model engine computations of probabilities
+	// loop over columns here and compute the normalised cumulative probabilites
+	cumProbs := mat.NewVecDense(s.numSpecies, nil)
+	buffer := cumProbs
+	for i := 0; i < s.numAgeGroups; i++ {
+		// needs implementing here
+		// buffer =	)
+		s.cumEventProbsDense.SetCol(i, cumProbs.RawVector().Data)
+	}
+	for i := s.numAgeGroups; i < 2*s.numAgeGroups; i++ {
+		// needs implementing here
+		s.FishPop.Params.DeathRates.ColView(i)
+		cumProbs.AddVec(cumProbs, buffer)
+		s.cumEventProbsDense.SetCol(i, cumProbs.RawVector().Data)
+	}
+	for i := 2 * s.numAgeGroups; i < 3*s.numAgeGroups; i++ {
+		// needs implementing here
+		// predations
+		cumProbs.AddVec(cumProbs, buffer)
+		s.cumEventProbsDense.SetCol(i, cumProbs.RawVector().Data)
+	}
+	cumProbs.AddVec(cumProbs, s.reciTimeStepVecDense)
+	s.cumEventProbsDense.SetCol(3*s.numAgeGroups, cumProbs.RawVector().Data)
+	for i := 0; i < s.numSpecies; i++ {
+		// normalise each row
+		buffer.DivElemVec(s.cumEventProbsDense.RowView(i), cumProbs)
+		s.cumEventProbsDense.SetRow(i, buffer.RawVector().Data)
+	}
+	return s.cumEventProbsDense
 }
 
-// core of the model
 func (s *Sim) genEvents() {
 	// only an independent event each step for each population as a whole
 	s.FishPop.latestBirths.Zero()
