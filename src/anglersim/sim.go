@@ -16,16 +16,17 @@ type doNothing struct{}
 func (d *doNothing) Set(i, j int, v float64) {}
 
 type Sim struct {
-	SimParams          *SimParams
-	FishPop            *FishPop
-	expDist            *distuv.Exponential
-	uniDist            *distuv.Uniform
-	timeStepDense      *mat.Dense
-	cumEventProbsDense *mat.Dense
-	prevTimeStep       float64
-	numSpecies         int
-	numAgeGroups       int
-	eventTypeLookup    []settable
+	SimParams            *SimParams
+	FishPop              *FishPop
+	expDist              *distuv.Exponential
+	uniDist              *distuv.Uniform
+	timeStepDense        *mat.Dense
+	reciTimeStepVecDense *mat.VecDense
+	cumEventProbsDense   *mat.Dense
+	prevTimeStep         float64
+	numSpecies           int
+	numAgeGroups         int
+	eventTypeLookup      []settable
 }
 
 func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
@@ -46,10 +47,7 @@ func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
 	for i := range ones {
 		ones[i] = 1.0
 	}
-	cumEventProbsDense := mat.NewDense(numSpecies, 3*numAgeGroups, nil)
-	// loop over rows here and precompute the normalised cumulative probabilites
-	// note that these can only be precomputed up to a missing normalisation that
-	// comes from the drawn timestep size
+	cumEventProbsDense := mat.NewDense(numSpecies, (3*numAgeGroups)+1, nil)
 	src := rand.NewSource(seed)
 	s := &Sim{
 		SimParams: simParams,
@@ -63,12 +61,13 @@ func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
 			Max: 1.0,
 			Src: src,
 		},
-		timeStepDense:      mat.NewDense(numSpecies, numAgeGroups, ones),
-		cumEventProbsDense: cumEventProbsDense,
-		prevTimeStep:       1.0,
-		numSpecies:         numSpecies,
-		numAgeGroups:       numAgeGroups,
-		eventTypeLookup:    eventTypeLookup,
+		timeStepDense:        mat.NewDense(numSpecies, numAgeGroups, ones),
+		reciTimeStepVecDense: mat.NewVecDense(numSpecies, ones[:numSpecies]),
+		cumEventProbsDense:   cumEventProbsDense,
+		prevTimeStep:         1.0,
+		numSpecies:           numSpecies,
+		numAgeGroups:         numAgeGroups,
+		eventTypeLookup:      eventTypeLookup,
 	}
 	return s
 }
@@ -79,15 +78,44 @@ func (s *Sim) genNewTimeStep() {
 	// trick to make the update quicker - worth checking that the ratio numbers
 	// don't get too extreme but otherwise it should work :)
 	s.timeStepDense.Scale(newTimeStep/s.prevTimeStep, s.timeStepDense)
+	s.reciTimeStepVecDense.ScaleVec(s.prevTimeStep/newTimeStep, s.reciTimeStepVecDense)
 }
 
 func (s *Sim) genCumulativeEventProbs() *mat.Dense {
-	cumEventProbs := s.cumEventProbsDense
-	// implement normalisation update using new timestep here!!!
-	return cumEventProbs
+	// these are the main model engine computations of probabilities
+	// loop over columns here and compute the normalised cumulative probabilites
+	cumProbs := mat.NewVecDense(s.numSpecies, nil)
+	buffer := cumProbs
+	for i := 0; i < s.numAgeGroups; i++ {
+		// needs implementing here
+		// buffer =
+		buffer.MulElemVec(buffer, s.FishPop.Params.BirthRates.ColView(i))
+		buffer.MulElemVec(buffer, s.FishPop.Counts.ColView(i))
+		cumProbs.AddVec(cumProbs, buffer)
+		s.cumEventProbsDense.SetCol(i, cumProbs.RawVector().Data)
+	}
+	for i := s.numAgeGroups; i < 2*s.numAgeGroups; i++ {
+		// needs implementing here
+		s.FishPop.Params.DeathRates.ColView(i)
+		cumProbs.AddVec(cumProbs, buffer)
+		s.cumEventProbsDense.SetCol(i, cumProbs.RawVector().Data)
+	}
+	for i := 2 * s.numAgeGroups; i < 3*s.numAgeGroups; i++ {
+		// needs implementing here
+		// predations
+		cumProbs.AddVec(cumProbs, buffer)
+		s.cumEventProbsDense.SetCol(i, cumProbs.RawVector().Data)
+	}
+	cumProbs.AddVec(cumProbs, s.reciTimeStepVecDense)
+	s.cumEventProbsDense.SetCol(3*s.numAgeGroups, cumProbs.RawVector().Data)
+	for i := 0; i < s.numSpecies; i++ {
+		// normalise each row
+		buffer.DivElemVec(s.cumEventProbsDense.RowView(i), cumProbs)
+		s.cumEventProbsDense.SetRow(i, buffer.RawVector().Data)
+	}
+	return s.cumEventProbsDense
 }
 
-// core of the model
 func (s *Sim) genEvents() {
 	// only an independent event each step for each population as a whole
 	s.FishPop.latestBirths.Zero()
