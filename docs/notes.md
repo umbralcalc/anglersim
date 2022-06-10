@@ -26,31 +26,32 @@
 
 The goal here is to calibrate a fully-stochastic causal model which evolves the fish counts, weights, lengths and ages for each species in each area.
 
-The age-conditional master equation for the proposed stochastic simulation, which is inspired by the famous [Lotka-Volterra system](https://en.wikipedia.org/wiki/Lotka%E2%80%93Volterra_equations), takes the form
+The approximate master equation for the proposed stochastic simulation, which is inspired by the famous [Lotka-Volterra system](https://en.wikipedia.org/wiki/Lotka%E2%80%93Volterra_equations), takes the form
 
 $$
 \begin{align}
-\frac{\partial}{\partial t}& P(\dots, n_i, \dots, t \vert \dots, a_i, \dots) = \\
-& \sum_{\forall i}\Lambda_i(n_i-1, a_i)P(\dots, n_i-1, \dots, t \vert \dots, a_i, \dots ) \\
-&+ \sum_{\forall i} (n_i+1)\mu_iP(\dots, n_i+1, \dots, t \vert \dots, a_i, \dots ) \\
-&+ \sum_{\forall i} \alpha_i(a_i)(n_i-1)\sum_{\forall i' \, {\sf prey}} n_{i'}P(\dots, n_i-1, n_{i'}, \dots, t \vert \dots, a_i, \dots )  \\
-&+ \sum_{\forall i} \beta_i(n_i+1) \sum_{\forall i' \, {\sf pred}} n_{i'}P(\dots, n_i+1, n_{i'}, \dots, t \vert \dots, a_i, \dots )  \\
-&+ \sum_{\forall i} \gamma_i(a_i)(n_i+1)P(\dots, n_i+1, \dots,t  \vert \dots, a_i, \dots ) \\
-&- \sum_{\forall i}\bigg[ \Lambda_i(n_i,a_i) + n_i\mu_i + \alpha_i(a_i)n_i \sum_{\forall i' \, {\sf prey}} n_{i'}  \\
-& \qquad \quad + \beta_in_i \sum_{\forall i' \, {\sf pred}} n_{i'} + \gamma_i(a_i)n_i \bigg] P(\dots, n_i, \dots,t \vert \dots, a_i, \dots ) \,,
+\frac{\delta}{\delta t} P(\dots, n_{ai}, \dots, t) + {\cal A}_{\delta t}\big[ P\big] &= \sum_{\forall i}\Lambda_{0i}(n_{0i}-1, n_{1i}, \dots )P(\dots, n_{0i}-1, \dots, t) \\
+&+ \sum_{\forall i}\sum_{\forall a} (n_{ai}+1)\mu_{ai}P(\dots, n_{ai}+1, \dots, t) \\
+&+ \sum_{\forall i}(n_{0i}-1)\alpha_{0i}\sum_{\forall i' \, {\sf prey}}\sum_{\forall a'} n_{a'i'}P(\dots, n_{0i}-1, n_{a'i'}, \dots, t)  \\
+&+ \sum_{\forall i}\sum_{\forall a} (n_{ai}+1)\beta_{i} \sum_{\forall i' \, {\sf pred}} \sum_{\forall a'} n_{a'i'} P(\dots, n_{ai}+1, n_{a'i'}, \dots, t)  \\
+&+ \sum_{\forall i}\sum_{\forall a} (n_{ai}+1) \gamma_{ai} P(\dots, n_{ai}+1, \dots, t) \\
+&- \sum_{\forall i}\bigg[ \Lambda_{0i}(n_{0i}, n_{1i}, \dots ) + \sum_{\forall a}n_{ai}\mu_{ai} + n_{0i}\alpha_{0i} \sum_{\forall i' \, {\sf prey}}\sum_{\forall a'} n_{a'i'}  \\
+& \qquad \quad + \sum_{\forall a}n_{ai}\beta_{ai} \sum_{\forall i' \, {\sf pred}}\sum_{\forall a'} n_{a'i'} + \sum_{\forall a}n_{ai}\gamma_{ai} \bigg] P(\dots, n_{ai}, \dots,t) \,,
 \end{align}
 $$
 
-where the time $t$ is defined in units of years, and where: $\Lambda_i(n_i,a_i) = \tilde{\Lambda_i}\mathbb{1}_{a_i=0}n_ie^{-\lambda_i(n_i-1)}$ is the density-dependent birth rate (which is only non-zero for $a_i=0$); $\mu_i$ is the death rate; $\alpha_i(a_i) = \alpha_i\mathbb{1}_{a_i=0}$ is the increase in the baseline birth rate per fish caused by each predation event; $\beta_i$ is the rate per fish of predation; and $\gamma_i(a_i)$ accounts for the rate of recreational fishing per fish for the $i$-th species in the $a_i$ age group.
+where the time $t$ is defined in units of years, and where: $\Lambda_{0i}(n_{0i}, n_{1i}, \dots ) = \tilde{\Lambda_{0i}}\sum_{\forall a > a^{\sf mat}_i}n_{ai}e^{-\lambda_i(n_{ai}-1)}$ is the density-dependent birth rate (which is only non-zero for age $a=0$ and given the typical reproductive maturity age for the $i$-th species $a^{\sf mat}_i$); $\mu_{ai}$ is the death rate for each age group of the species; $\alpha_{0i}$ is the increase in the baseline birth rate per fish caused by the increase in prey population; $\beta_{i}$ is the rate per fish of predation for all age groups of the species; and $\gamma_{ai}$ accounts for the rate of recreational fishing per fish in each age group of the species. Note that the ageing operator term on the LHS of the equation above is an approximation of a continuous derivative in age which takes into account the ageing between groups within a species. This term could take the rough form of 
 
-One could choose to calibrate the stochastic model using the data by using the following 'deterministic' model which can be derived by taking the first moment of the above master equation with respect to $n_i$, yielding
+$$
+{\cal A}_{\delta t}\big[ P\big] \simeq \sum_{\forall i}\sum_{\forall a} \big[ P(\dots, n_{ai}, \dots,t) - P(\dots, n_{ai}+n^*_{ai}, n_{(a+1)i}-n^*_{ai}, \dots, t)\big] \,,
+$$
+
+where $n^*_{ai}(\delta t) = {\rm floor}(n_{ai} \delta t /\delta a)$ denotes the number of fish of the $i$-th species and age group $a$ ageing out of their group (where all groups have a width of $\delta a$ in the same time units as $t$). Note that in a stochastic algorithm, it makes more sense for this term to be modelled as a deterministic transition.
+
+Look into the likelihood...
 
 $$
 \begin{align}
-\frac{\partial}{\partial t} \langle n_i(a_i,t)\rangle &= \langle \Lambda_i(n_i, a_i) \rangle - \mu_i\langle n_i(a_i,t)\rangle + \alpha_i(a_i)\langle n_i(a_i,t)\rangle\sum_{\forall i' \, {\sf prey}} \langle n_{i'}(t)\rangle \\
-& - \beta_i\langle n_i(a_i,t)\rangle\sum_{\forall i' \, {\sf pred}} \langle n_{i'}(t)\rangle - \gamma_i(a_i) \langle n_i(a_i,t)\rangle \\
 {\sf Likelihood} &= \sum_{{\sf data}}{\rm NB}\big[{\sf data};w_{i,{\sf survey}}\langle n_i(a_i,t_{{\sf data}})\rangle,k_{i,{\sf survey}}\big] \,,
 \end{align}
 $$
-
-but this would not include population size-based fluctuations (which are probably fairly small in most cases due to the large population numbers). To include these fluctuations with limited additional computational cost, one could perform a Van Kampen large-$N$ expansion about the population mean (see, e.g., appendix C of [this paper](https://www.sciencedirect.com/science/article/pii/S1755436521000013)) but let's do something a bit more computationally fancy with the full simulation instead, just for fun. 

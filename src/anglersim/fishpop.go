@@ -1,9 +1,10 @@
 package main
 
 import (
+	"math"
+
 	"golang.org/x/exp/rand"
 	"gonum.org/v1/gonum/mat"
-	"gonum.org/v1/gonum/stat/distuv"
 )
 
 type FishPop struct {
@@ -46,16 +47,11 @@ func (f *FishPop) ApplyAgeing(src rand.Source) {
 		return
 	}
 	agedCounts := f.Counts
-	distBinom := distuv.Binomial{
-		N:   1.0,
-		P:   (f.ageingTimescale - f.timeUntilNextAgeing) / f.ageBinWidthYears,
-		Src: src,
-	}
+	agedCounts.Scale((f.ageingTimescale-f.timeUntilNextAgeing)/f.ageBinWidthYears, agedCounts)
 	// sigh... this line is probably so slow....
 	agedCounts.Apply(
 		func(i int, j int, c float64) float64 {
-			distBinom.N = c
-			return distBinom.Rand()
+			return math.Floor(c)
 		},
 		f.Counts,
 	)
