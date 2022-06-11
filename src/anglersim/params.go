@@ -10,27 +10,24 @@ type SimParams struct {
 	TimeStepScale float64
 }
 
-// population parameters to setup the simulation - note in particular
-// that the age groups are split into yearly bins by default
+// population parameters to setup the simulation
 type PopParams struct {
 	SpeciesNames *list.List
-	BirthRates   *mat.Dense
-	DeathRates   *mat.Dense
+	BirthRates   *mat.VecDense
+	DeathRates   *mat.VecDense
 	numSpecies   int
-	numAgeGroups int
 }
 
 func NewPopParams(
 	SpeciesNames *list.List,
-	BirthRates, DeathRates *mat.Dense,
+	BirthRates, DeathRates *mat.VecDense,
 ) *PopParams {
-	numSpecies, numAgeGroups := BirthRates.Dims()
+	numSpecies := BirthRates.Len()
 	p := &PopParams{
 		SpeciesNames: SpeciesNames,
 		BirthRates:   BirthRates,
 		DeathRates:   DeathRates,
 		numSpecies:   numSpecies,
-		numAgeGroups: numAgeGroups,
 	}
 	return p
 }

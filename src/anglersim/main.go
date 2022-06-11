@@ -5,30 +5,15 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
-	"golang.org/x/exp/rand"
-	"gonum.org/v1/gonum/mat"
 )
 
 func createPopAndAgeIt(speciesNames *list.List) {
 	numSpecies := speciesNames.Len()
-	numAgeGroups := 10
-	data := make([]float64, numSpecies*numAgeGroups)
+	data := make([]float64, numSpecies)
 	for i := range data {
 		data[i] = 1.0
 	}
-	p := NewPopParams(
-		speciesNames,
-		mat.NewDense(numSpecies, numAgeGroups, data),
-		mat.NewDense(numSpecies, numAgeGroups, data),
-	)
-	f := NewFishPop(p)
-	// fmt.Println(f.Ages)
-	src := rand.NewSource(42)
-	for i := 0; i < 10000; i++ {
-		f.ApplyAgeing(src)
-	}
-	// fmt.Println(f.Ages)
+
 }
 
 func main() {

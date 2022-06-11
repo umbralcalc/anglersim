@@ -8,12 +8,12 @@ import (
 )
 
 type settable interface {
-	Set(i, j int, v float64)
+	SetVec(i int, v float64)
 }
 
 type doNothing struct{}
 
-func (d *doNothing) Set(i, j int, v float64) {}
+func (d *doNothing) SetVec(i int, v float64) {}
 
 type Sim struct {
 	SimParams            *SimParams
@@ -26,29 +26,22 @@ type Sim struct {
 	prevTimeStep         float64
 	cumEventProbsDense   *mat.Dense
 	numSpecies           int
-	numAgeGroups         int
 	eventTypeLookup      []settable
 }
 
 func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
-	numSpecies, numAgeGroups := fishPop.Params.BirthRates.Dims()
-	eventTypeLookup := make([]settable, (3*numAgeGroups)+1)
-	for i := range eventTypeLookup {
-		if i < numAgeGroups {
-			eventTypeLookup[i] = fishPop.latestBirths
-		} else if i < 2*numAgeGroups {
-			eventTypeLookup[i] = fishPop.latestDeaths
-		} else if i < 3*numAgeGroups {
-			eventTypeLookup[i] = fishPop.latestPredations
-		} else {
-			eventTypeLookup[i] = &doNothing{}
-		}
+	numSpecies := fishPop.Params.BirthRates.Len()
+	eventTypeLookup := []settable{
+		fishPop.latestBirths,
+		fishPop.latestDeaths,
+		fishPop.latestPredations,
+		&doNothing{},
 	}
 	ones := make([]float64, numSpecies)
 	for i := range ones {
 		ones[i] = 1.0
 	}
-	cumEventProbsDense := mat.NewDense(numSpecies, (3*numAgeGroups)+1, nil)
+	cumEventProbsDense := mat.NewDense(numSpecies, 4, nil)
 	src := rand.NewSource(seed)
 	s := &Sim{
 		SimParams: simParams,
@@ -68,7 +61,6 @@ func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
 		reciTimeStepVecDense: mat.NewVecDense(numSpecies, ones),
 		cumEventProbsDense:   cumEventProbsDense,
 		numSpecies:           numSpecies,
-		numAgeGroups:         numAgeGroups,
 		eventTypeLookup:      eventTypeLookup,
 	}
 	return s
@@ -86,25 +78,20 @@ func (s *Sim) genCumulativeEventProbs() *mat.Dense {
 	// loop over columns here and compute the normalised cumulative probabilites
 	cumProbs := mat.NewVecDense(s.numSpecies, nil)
 	buffer := cumProbs
-	for i := 0; i < s.numAgeGroups; i++ {
-		// needs implementing here
-		// buffer =	)
-		s.cumEventProbsDense.SetCol(i, cumProbs.RawVector().Data)
-	}
-	for i := s.numAgeGroups; i < 2*s.numAgeGroups; i++ {
-		// needs implementing here
-		s.FishPop.Params.DeathRates.ColView(i)
-		cumProbs.AddVec(cumProbs, buffer)
-		s.cumEventProbsDense.SetCol(i, cumProbs.RawVector().Data)
-	}
-	for i := 2 * s.numAgeGroups; i < 3*s.numAgeGroups; i++ {
-		// needs implementing here
-		// predations
-		cumProbs.AddVec(cumProbs, buffer)
-		s.cumEventProbsDense.SetCol(i, cumProbs.RawVector().Data)
-	}
+	// needs implementing here
+	buffer = s.FishPop.Params.BirthRates
+	s.cumEventProbsDense.SetCol(0, cumProbs.RawVector().Data)
+	// needs implementing here
+	buffer = s.FishPop.Params.DeathRates
+	cumProbs.AddVec(cumProbs, buffer)
+	s.cumEventProbsDense.SetCol(1, cumProbs.RawVector().Data)
+	// needs implementing here
+	// predations
+	cumProbs.AddVec(cumProbs, buffer)
+	s.cumEventProbsDense.SetCol(2, cumProbs.RawVector().Data)
+	// do nothing events
 	cumProbs.AddVec(cumProbs, s.reciTimeStepVecDense)
-	s.cumEventProbsDense.SetCol(3*s.numAgeGroups, cumProbs.RawVector().Data)
+	s.cumEventProbsDense.SetCol(3, cumProbs.RawVector().Data)
 	for i := 0; i < s.numSpecies; i++ {
 		// normalise each row
 		buffer.DivElemVec(s.cumEventProbsDense.RowView(i), cumProbs)
@@ -124,14 +111,13 @@ func (s *Sim) genEvents() {
 			cumEventProbs.RawRowView(i),
 			s.uniDist.Rand(),
 		)
-		s.eventTypeLookup[j].Set(i, j, 1.0)
+		s.eventTypeLookup[j].SetVec(i, 1.0)
 	}
 }
 
 func (s *Sim) Step() {
 	s.genNewTimeStep()
 	s.genEvents()
-	s.FishPop.ApplyAgeing(s.src)
 	s.FishPop.ApplyDeaths()
 	s.FishPop.ApplyBirths()
 	s.FishPop.ApplyPredations()
