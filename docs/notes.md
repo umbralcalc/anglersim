@@ -1,6 +1,6 @@
 ## Notes
 
-The goal here is to calibrate a stochastic causal model which evolves the fish counts, weights, lengths and ages for each species in each area. To do this, we will combine some well-known models from mathematical ecology with supervised learning.
+Inspired by the empirical dynamical modelling approach of [this work](https://www.pnas.org/doi/full/10.1073/pnas.1417063112), but also desiring a generative model which has some link to the classic causal models promoted by mathematical ecology; the goal here is to create and calibrate a stochastic model which predicts the fish counts, weights, lengths and ages for each species in each area based on the past system states. To do this, we will combine some well-known models from mathematical ecology with supervised learning.
 
 **To dos:**
 
