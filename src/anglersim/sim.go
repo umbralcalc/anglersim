@@ -26,8 +26,7 @@ type Sim struct {
 	expDist            *distuv.Exponential
 	uniDist            *distuv.Uniform
 	src                rand.Source
-	timeStep           *mat.VecDense
-	prevTimeStep       float64
+	timeStep           float64
 	cumEventProbsDense *mat.Dense
 	numSpecies         int
 	eventTypeLookup    []settable
@@ -59,8 +58,7 @@ func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
 			Src: src,
 		},
 		src:                src,
-		timeStep:           mat.NewVecDense(simParams.NumRealisations, nil),
-		prevTimeStep:       1.0,
+		timeStep:           0.0,
 		cumEventProbsDense: cumEventProbsDense,
 		numSpecies:         numSpecies,
 		eventTypeLookup:    eventTypeLookup,
@@ -68,27 +66,27 @@ func NewSim(simParams *SimParams, fishPop *FishPop, seed uint64) *Sim {
 	return s
 }
 
-func (s *Sim) genNewTimeStep(threadNum int) {
+func (s *Sim) genNewTimeStep() {
 	// note that time units are all in years
-	s.timeStep.SetVec(threadNum, s.expDist.Rand())
-	s.FishPop.StepTime(s.timeStep.AtVec(threadNum), threadNum)
+	s.timeStep = s.expDist.Rand()
+	s.FishPop.StepTime(s.timeStep)
 }
 
-func (s *Sim) genCumulativeEventProbs(threadNum int) *mat.Dense {
+func (s *Sim) genCumulativeEventProbs() *mat.Dense {
 	// these are the main model engine computations of probabilities
 	// loop over species here and compute the normalised cumulative probabilites
 	ni := 0.0
 	cumProb := 0.0
 	cumProbs := mat.NewVecDense(3, nil)
-	reciTimeStep := 1.0 / s.timeStep.AtVec(threadNum)
+	reciTimeStep := 1.0 / s.timeStep
 	for i := 0; i < s.numSpecies; i++ {
-		ni = s.FishPop.Counts.At(i, threadNum)
+		ni = s.FishPop.Counts.AtVec(i)
 		// increase events (modulated by prey)
 		cumProb = ni*math.Exp(s.FishPop.Params.DensDepPowers.AtVec(i)*(1.0-ni)) +
 			ni*s.FishPop.Params.PredatorBirthIncRates.AtVec(i)*
 				mat.Dot(
 					s.FishPop.Params.PreyMatrix.RowView(i),
-					s.FishPop.Counts.ColView(threadNum),
+					s.FishPop.Counts,
 				)
 		cumProbs.SetVec(0, cumProb)
 		// decrease events (modulated by fishing and predation)
@@ -97,7 +95,7 @@ func (s *Sim) genCumulativeEventProbs(threadNum int) *mat.Dense {
 			ni*s.FishPop.Params.PredationRates.AtVec(i)*
 				mat.Dot(
 					s.FishPop.Params.PredatorMatrix.RowView(i),
-					s.FishPop.Counts.ColView(threadNum),
+					s.FishPop.Counts,
 				)
 		cumProbs.SetVec(1, cumProb)
 		// do nothing events
@@ -110,11 +108,11 @@ func (s *Sim) genCumulativeEventProbs(threadNum int) *mat.Dense {
 	return s.cumEventProbsDense
 }
 
-func (s *Sim) genEvents(threadNum int) {
+func (s *Sim) genEvents() {
 	// only an independent event each step for each population as a whole
 	s.FishPop.latestIncreases.Zero()
 	s.FishPop.latestDecreases.Zero()
-	cumEventProbs := s.genCumulativeEventProbs(threadNum)
+	cumEventProbs := s.genCumulativeEventProbs()
 	for i := 0; i < s.numSpecies; i++ {
 		j := floats.Within(
 			cumEventProbs.RawRowView(i),
@@ -124,23 +122,27 @@ func (s *Sim) genEvents(threadNum int) {
 	}
 }
 
-func (s *Sim) Step(threadNum int) {
-	s.genNewTimeStep(threadNum)
-	s.genEvents(threadNum)
-	s.FishPop.ApplyUpdates(threadNum)
+func (s *Sim) Step() {
+	s.genNewTimeStep()
+	s.genEvents()
+	s.FishPop.ApplyUpdates()
 }
 
 func (s *Sim) Run() {
+	for s.FishPop.Time < s.SimParams.TotalRunTime {
+		s.Step()
+	}
+}
+
+func (s *Sim) RunRealisations() {
 	var wg sync.WaitGroup
 	startTime := time.Now()
 	for i := 0; i < s.SimParams.NumRealisations; i++ {
 		wg.Add(1)
-		go func(threadNum int) {
+		go func() {
 			defer wg.Done()
-			for s.FishPop.Time.AtVec(threadNum) < s.SimParams.TotalRunTime {
-				s.Step(threadNum)
-			}
-		}(i)
+			s.Run()
+		}()
 	}
 	wg.Wait()
 	fmt.Println(time.Since(startTime))
