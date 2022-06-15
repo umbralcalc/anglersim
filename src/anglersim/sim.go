@@ -137,12 +137,17 @@ func (s *Sim) Run() {
 func (s *Sim) RunRealisations() {
 	var wg sync.WaitGroup
 	startTime := time.Now()
+	var outputCounts []chan []float64
+	for i := 0; i < s.SimParams.NumRealisations; i++ {
+		outputCounts[i] = make(chan []float64)
+	}
 	for i := 0; i < s.SimParams.NumRealisations; i++ {
 		wg.Add(1)
-		go func() {
+		go func(c []chan []float64, real int) {
 			defer wg.Done()
 			s.Run()
-		}()
+			c[real] <- s.FishPop.Counts.RawVector().Data
+		}(outputCounts, i)
 	}
 	wg.Wait()
 	fmt.Println(time.Since(startTime))
