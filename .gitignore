@@ -2,3 +2,4 @@
 *.zip
 data/*
 venv/*
+src/anglersim/output/*

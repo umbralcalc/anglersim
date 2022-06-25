@@ -2,14 +2,16 @@ package main
 
 import (
 	"container/list"
-	"fmt"
+	"io/ioutil"
+	"log"
 
 	"gonum.org/v1/gonum/mat"
+	"google.golang.org/protobuf/proto"
 )
 
 func main() {
 	const runTime float64 = 10.0
-	const timeScale float64 = 0.0001
+	const timeScale float64 = 0.001
 	const numReals int = 100
 	const seed uint64 = 42
 	speciesNames := list.New()
@@ -49,7 +51,12 @@ func main() {
 		TotalRunTime:    runTime,
 		NumRealisations: numReals,
 	}
-	outputCounts := RunSim(simParams, fishPop, seed)
-	fa := mat.Formatted(outputCounts, mat.Prefix("    "), mat.Squeeze())
-	fmt.Printf("a = %v\n", fa)
+	outputCountsMessage := RunSim(simParams, fishPop, seed)
+	out, err := proto.Marshal(outputCountsMessage)
+	if err != nil {
+		log.Fatalln("Failed to encode counts message:", err)
+	}
+	if err := ioutil.WriteFile("output/anglersim.data", out, 0644); err != nil {
+		log.Fatalln("Failed to write counts message:", err)
+	}
 }

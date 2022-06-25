@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"anglersim/simio"
+
 	"golang.org/x/exp/rand"
 	"gonum.org/v1/gonum/floats"
 	"gonum.org/v1/gonum/mat"
@@ -135,14 +137,17 @@ func (s *Sim) Run() {
 	}
 }
 
-func RunSim(simParams *SimParams, fishPop *FishPop, seed uint64) *mat.Dense {
+func RunSim(simParams *SimParams, fishPop *FishPop, seed uint64) *simio.AnglersimOutput {
 	var wg sync.WaitGroup
 	startTime := time.Now()
-	outputCounts := mat.NewDense(
-		fishPop.Params.numSpecies,
-		simParams.NumRealisations,
-		nil,
-	)
+	outputSpecies := []int64{}
+	outputCounts := []float64{}
+	for i := 0; i < simParams.NumRealisations; i++ {
+		for j := 0; j < fishPop.Params.numSpecies; j++ {
+			outputSpecies = append(outputSpecies, int64(j))
+			outputCounts = append(outputCounts, 0.0)
+		}
+	}
 	for i := 0; i < simParams.NumRealisations; i++ {
 		wg.Add(1)
 		channelCounts := make(chan []float64, fishPop.Params.numSpecies)
@@ -154,9 +159,16 @@ func RunSim(simParams *SimParams, fishPop *FishPop, seed uint64) *mat.Dense {
 			s.Run()
 			c <- s.FishPop.Counts.RawVector().Data
 		}(channelCounts, i)
-		outputCounts.SetCol(i, <-channelCounts)
+		counts := <-channelCounts
+		for j := 0; j < fishPop.Params.numSpecies; j++ {
+			outputCounts[(i*fishPop.Params.numSpecies)+j] = counts[j]
+		}
 	}
 	wg.Wait()
 	fmt.Println(time.Since(startTime))
-	return outputCounts
+	outputCountsMessage := &simio.AnglersimOutput{
+		Species: outputSpecies,
+		Counts:  outputCounts,
+	}
+	return outputCountsMessage
 }

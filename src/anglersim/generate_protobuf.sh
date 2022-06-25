@@ -1,0 +1,1 @@
+protoc -I=. --go_out=$(pwd) simio.proto

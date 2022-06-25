@@ -1,0 +1,16 @@
+syntax = "proto3";
+package main;
+
+option go_package = "./simio";
+
+message AnglersimInput {
+    repeated int64 species = 1;
+    repeated double counts = 2;
+}
+
+message AnglersimOutput {
+    repeated int64 species = 1;
+    repeated double counts = 2;
+}
+
+
