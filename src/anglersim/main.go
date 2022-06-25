@@ -8,9 +8,9 @@ import (
 )
 
 func main() {
-	const runTime float64 = 1.0
-	const timeScale float64 = 0.01
-	const numReals int = 3
+	const runTime float64 = 10.0
+	const timeScale float64 = 0.0001
+	const numReals int = 100
 	const seed uint64 = 42
 	speciesNames := list.New()
 	speciesNames.PushBack("Bream")
