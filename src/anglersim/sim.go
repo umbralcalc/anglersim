@@ -114,10 +114,11 @@ func (s *Sim) genEvents() {
 	s.FishPop.latestDecreases.Zero()
 	cumEventProbs := s.genCumulativeEventProbs()
 	for i := 0; i < s.numSpecies; i++ {
+		v := s.uniDist.Rand()
 		j := floats.Within(
 			cumEventProbs.RawRowView(i),
-			s.uniDist.Rand(),
-		)
+			v,
+		) + 1
 		s.eventTypeLookup[j].SetVec(i, 1.0)
 	}
 }
@@ -134,21 +135,26 @@ func (s *Sim) Run() {
 	}
 }
 
-func RunSim(simParams *SimParams, fishPop *FishPop, seed uint64) []chan []float64 {
+func RunSim(simParams *SimParams, fishPop *FishPop, seed uint64) *mat.Dense {
 	var wg sync.WaitGroup
 	startTime := time.Now()
-	var outputCounts []chan []float64
-	for i := 0; i < simParams.NumRealisations; i++ {
-		outputCounts[i] = make(chan []float64)
-	}
+	outputCounts := mat.NewDense(
+		fishPop.Params.numSpecies,
+		simParams.NumRealisations,
+		nil,
+	)
 	for i := 0; i < simParams.NumRealisations; i++ {
 		wg.Add(1)
-		go func(c []chan []float64, real int) {
+		channelCounts := make(chan []float64, fishPop.Params.numSpecies)
+		go func(c chan []float64, real int) {
 			defer wg.Done()
-			s := NewSim(simParams, fishPop, seed+uint64(real))
+			defer close(channelCounts)
+			newFishPop := NewFishPop(fishPop.Params, fishPop.Counts)
+			s := NewSim(simParams, newFishPop, seed+uint64(real))
 			s.Run()
-			c[real] <- s.FishPop.Counts.RawVector().Data
-		}(outputCounts, i)
+			c <- s.FishPop.Counts.RawVector().Data
+		}(channelCounts, i)
+		outputCounts.SetCol(i, <-channelCounts)
 	}
 	wg.Wait()
 	fmt.Println(time.Since(startTime))
