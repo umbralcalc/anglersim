@@ -27,9 +27,8 @@ type PopParams struct {
 }
 
 func NewPopParams(
-	SpeciesNames *list.List,
-	DensDepPowers *mat.VecDense,
 	BirthRates *mat.VecDense,
+	DensDepPowers *mat.VecDense,
 	DeathRates *mat.VecDense,
 	PredationRates *mat.VecDense,
 	PredatorBirthIncRates *mat.VecDense,
@@ -39,9 +38,8 @@ func NewPopParams(
 ) *PopParams {
 	numSpecies := BirthRates.Len()
 	p := &PopParams{
-		SpeciesNames:          SpeciesNames,
-		DensDepPowers:         DensDepPowers,
 		BirthRates:            BirthRates,
+		DensDepPowers:         DensDepPowers,
 		DeathRates:            DeathRates,
 		PredationRates:        PredationRates,
 		PredatorBirthIncRates: PredatorBirthIncRates,
