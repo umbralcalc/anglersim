@@ -3,3 +3,4 @@
 data/*
 venv/*
 src/anglersim/output/*
+src/anglersim/input/*
