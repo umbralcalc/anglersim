@@ -2,27 +2,12 @@
 
 Inspired by the empirical dynamical modelling approach of [this work](https://www.pnas.org/doi/full/10.1073/pnas.1417063112), but also desiring a generative model which has some link to the classic causal models promoted by mathematical ecology; the goal here is to create and calibrate a stochastic model which predicts the fish counts, weights, lengths and ages for each species in each area based on the past system states. To do this, we will combine some well-known models from mathematical ecology with supervised learning.
 
-**To dos:**
-
-1. Code up negative binomial MCMC to obtain the $\ln \langle n_i(t)\rangle$ values for each species as above.
-2. Code up fitting a Gaussian correlated posterior profile to the $\ln \langle n_i(t)\rangle$ posterior for each species. 
-3. Get new data on species death rates and recreational freshwater angling in order to put in reasonable parameters to the simulation.
-4. Come up with a new data-driven emulator model where the transition probabilities are learned via ML methods with the data - each time point in the future can still be exponentially distributed and much of the original structure can be maintained, but there will be a feature extraction step each simulation timestep now. Remodel the Go simulator so that it uses this simulator design and create some graph diagrams to explain in this documentation + derive graph model structure from the Lotka-Volterra master equation formalism.
-5. Obtain the maximum a posteriori (MAP) calibration of the full sim using the fitted Gaussian posterior profile from 2., using any necessary Gaussian priors over $\ln \alpha$ and $\ln \beta$ values to stabilize the fitting and a Gaussian over the population count (which is reduced by Bernoulli trials corresponding to the survey) with variance equal to the tolerance $\epsilon$ which must be adaptively reduced as the fit improves.
-6. Sampling algorithm to obtain the MAP of the simulation should alternate between exploration (localised sampling with a variance and fitting an overall lognormal profile to the posterior parameters) and exploitation using the profile to compute approximate gradients for the optimiser to direct the next regions for sampling.
-7. Cross-validation with future data to verify the predictivity of the simulation.
-8. Investigate how the ages of each species evolve over time (and whether or not these are correlated to the $\langle n_i(t)\rangle$ values obtained from the simulation at the relevant time period). 
-9. Build a predictive supervised learning model for ages, weights and lengths.
-10. Look into the regional clustering cross-correlations between the mean counts of species between regions in order to potentially see patterns from common populations. This should hopefully be reflected in a spatial analysis.
-
 
 **IMPORTANT Data information to be aware of:**
 
 - The surveys seem to [usually be conducted with electrofishing](https://environmentagency.blog.gov.uk/2016/05/11/how-we-carry-out-fish-surveys/) - which actually avoids harming the fish so that they can return to their population.
 - `'Is Species Selective'` - this survey was focussed on a particular subset of species and so should not be used to get a representative sample of the whole population.
 - `'Survey method'` - each method is distinct and so will not only give different k values for the negative binomial but also different means!!!
-
-**NEED TO FIRST GET AS MUCH DATA AS POSSIBLE ON RECREATIONAL FRESHWATER ANGLING!!!!**
 
 The one-step master equation for the proposed stochastic simulation is given implictly by
 
