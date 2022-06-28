@@ -4,3 +4,5 @@ data/*
 venv/*
 src/anglersim/output/*
 src/anglersim/input/*
+__pycache__/
+*.pyc
