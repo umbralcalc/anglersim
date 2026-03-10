@@ -1,4 +1,4 @@
-package nfpd
+package data
 
 import (
 	"bufio"

@@ -1,4 +1,4 @@
-package nfpd
+package data
 
 import (
 	"os"
@@ -6,7 +6,7 @@ import (
 	"github.com/go-gota/gota/dataframe"
 )
 
-func GetTypesDataFrameFromCSV(
+func GetSitesDataFrameFromCSV(
 	csvPath string,
 ) dataframe.DataFrame {
 	f, err := os.Open(csvPath)
