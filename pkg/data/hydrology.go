@@ -287,6 +287,7 @@ func GetDailyFlowReadings(measureID, startDate, endDate string) []HydrologyReadi
 		}
 
 		chunkStart = chunkEnd
+		time.Sleep(200 * time.Millisecond)
 	}
 
 	sort.Slice(allReadings, func(i, j int) bool {

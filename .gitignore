@@ -1,2 +1,5 @@
 .vscode/**
 dat/**
+
+fetchcovariates
+!cmd/fetchcovariates/
