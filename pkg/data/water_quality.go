@@ -185,9 +185,9 @@ func FindNearestWQPoint(easting, northing int, maxDistKm float64) *WQSamplingPoi
 func GetWQObservations(notation, determinandCode, startDate, endDate string) []WQObservation {
 	var allObs []WQObservation
 
-	// Paginate through results
+	// Paginate through results (API limit cap is 250)
 	skip := 0
-	limit := 2000
+	limit := 250
 	for {
 		body, err := waterQualityGet(
 			fmt.Sprintf("/sampling-point/%s/observation", notation),

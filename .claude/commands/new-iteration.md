@@ -36,4 +36,4 @@ If $ARGUMENTS is provided, use it as the description of what the iteration shoul
 
 ## Reference pattern
 
-See `pkg/custom/moving_average.go`, `pkg/custom/moving_average_test.go`, and `pkg/custom/moving_average_settings.yaml` for the exact pattern to follow.
+See `pkg/population/ricker.go`, `pkg/population/ricker_test.go`, and `pkg/population/ricker_settings.yaml` for the exact pattern to follow.

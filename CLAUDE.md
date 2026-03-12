@@ -13,7 +13,7 @@ pkg/data/          # Data access and preparation
   panel.go          # Data prep pipeline (BuildPanel → clean site×year panel)
   hydrology.go      # EA Hydrology API client (flow stations, daily readings)
   water_quality.go  # EA Water Quality API client (temp, DO, ammonia, BOD)
-pkg/custom/         # Custom stochadex iterations (e.g. moving_average.go)
+pkg/population/     # Stochastic population dynamics models (e.g. ricker.go)
 cfg/                # Stochadex YAML configs
 nbs/                # GoNB Jupyter notebooks
   data_exploration.ipynb  # Data exploration and coverage analysis

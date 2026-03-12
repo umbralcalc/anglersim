@@ -1,0 +1,24 @@
+iterations:
+- name: covariates
+  params:
+    param_values: [0.5, 12.0, 9.0]
+  init_state_values: [0.5, 12.0, 9.0]
+  seed: 0
+  state_width: 3
+  state_history_depth: 2
+- name: population
+  params:
+    growth_rate: [0.5]
+    density_dependence: [1.0]
+    covariate_coefficients: [0.1, -0.02, 0.05]
+    covariates: [0.5, 12.0, 9.0]
+    process_noise_sd: [0.1]
+  params_from_upstream:
+    covariates:
+      upstream: 0
+  init_state_values: [-2.0]
+  seed: 12345
+  state_width: 1
+  state_history_depth: 2
+init_time_value: 0.0
+timesteps_history_depth: 2
