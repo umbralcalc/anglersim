@@ -1,28 +1,18 @@
 package main
 
 import (
-	"encoding/csv"
 	"flag"
 	"fmt"
 	"log"
 	"math"
 	"math/rand/v2"
-	"os"
-	"strconv"
 
+	"github.com/umbralcalc/anglersim/pkg/data"
 	"github.com/umbralcalc/anglersim/pkg/population"
 	"github.com/umbralcalc/stochadex/pkg/general"
 	"github.com/umbralcalc/stochadex/pkg/inference"
 	"github.com/umbralcalc/stochadex/pkg/simulator"
 )
-
-// siteData holds the time series for a single site.
-type siteData struct {
-	years       []float64
-	logDensity  [][]float64 // [T][1] — observed log-density per year
-	covariates  [][]float64 // [T][K] — environmental covariates per year
-	numCovariates int
-}
 
 func main() {
 	panelFile := flag.String("panel", "dat/brown_trout_panel_with_covariates.csv",
@@ -33,9 +23,9 @@ func main() {
 	flag.Parse()
 
 	// Load site data
-	data := loadSiteData(*panelFile, *siteID)
-	T := len(data.years)
-	log.Printf("Site %d: %d years, %d covariates", *siteID, T, data.numCovariates)
+	d := data.LoadSiteTimeSeries(*panelFile, *siteID)
+	T := len(d.Years)
+	log.Printf("Site %d: %d years, %d covariates", *siteID, T, d.NumCovariates)
 
 	// Parameter space: [growth_rate, density_dependence, beta_flow, beta_temp, beta_do, process_noise_sd, obs_noise_sd]
 	paramNames := []string{"growth_rate", "density_dependence",
@@ -67,7 +57,7 @@ func main() {
 			proposal[j] = ranges[j].lo + rng.Float64()*(ranges[j].hi-ranges[j].lo)
 		}
 
-		logLik := evalLogLikelihood(data, proposal)
+		logLik := evalLogLikelihood(d, proposal)
 
 		if logLik > bestLogLik {
 			bestLogLik = logLik
@@ -89,9 +79,9 @@ func main() {
 	// Print model predictions vs observed
 	fmt.Println()
 	fmt.Printf("%-6s %10s %10s %10s\n", "YEAR", "OBS_DENS", "PRED_DENS", "RESID")
-	predictions := runModel(data, bestParams)
-	for i, yr := range data.years {
-		obsDens := math.Exp(data.logDensity[i][0])
+	predictions := runModel(d, bestParams)
+	for i, yr := range d.Years {
+		obsDens := math.Exp(d.LogDensity[i][0])
 		predDens := math.Exp(predictions[i])
 		fmt.Printf("%-6.0f %10.4f %10.4f %10.4f\n",
 			yr, obsDens, predDens, obsDens-predDens)
@@ -100,8 +90,8 @@ func main() {
 
 // evalLogLikelihood runs the Ricker model with given params and returns
 // cumulative log-likelihood of the observed data.
-func evalLogLikelihood(data *siteData, params []float64) float64 {
-	T := len(data.years)
+func evalLogLikelihood(d *data.SiteData, params []float64) float64 {
+	T := len(d.Years)
 
 	growthRate := params[0]
 	densityDep := params[1]
@@ -115,7 +105,7 @@ func evalLogLikelihood(data *siteData, params []float64) float64 {
 			{ // 0: observed data
 				Name:              "observed_data",
 				Params:            simulator.Params{Map: map[string][]float64{}},
-				InitStateValues:   data.logDensity[0],
+				InitStateValues:   d.LogDensity[0],
 				StateWidth:        1,
 				StateHistoryDepth: 2,
 				Seed:              0,
@@ -123,8 +113,8 @@ func evalLogLikelihood(data *siteData, params []float64) float64 {
 			{ // 1: covariates
 				Name:              "covariates",
 				Params:            simulator.Params{Map: map[string][]float64{}},
-				InitStateValues:   data.covariates[0],
-				StateWidth:        data.numCovariates,
+				InitStateValues:   d.Covariates[0],
+				StateWidth:        d.NumCovariates,
 				StateHistoryDepth: 2,
 				Seed:              0,
 			},
@@ -135,14 +125,14 @@ func evalLogLikelihood(data *siteData, params []float64) float64 {
 						"growth_rate":            {growthRate},
 						"density_dependence":     {densityDep},
 						"covariate_coefficients": betas,
-						"covariates":             data.covariates[0],
+						"covariates":             d.Covariates[0],
 						"process_noise_sd":       {procNoiseSD},
 					},
 				},
 				ParamsFromUpstream: map[string]simulator.UpstreamConfig{
 					"covariates": {Upstream: 1},
 				},
-				InitStateValues:   data.logDensity[0],
+				InitStateValues:   d.LogDensity[0],
 				StateWidth:        1,
 				StateHistoryDepth: 2,
 				Seed:              1234,
@@ -151,9 +141,9 @@ func evalLogLikelihood(data *siteData, params []float64) float64 {
 				Name: "comparison",
 				Params: simulator.Params{
 					Map: map[string][]float64{
-						"mean":               data.logDensity[0],
+						"mean":               d.LogDensity[0],
 						"variance":           {obsNoiseSD * obsNoiseSD},
-						"latest_data_values": data.logDensity[0],
+						"latest_data_values": d.LogDensity[0],
 						"cumulative":         {1},
 						"burn_in_steps":      {0},
 					},
@@ -168,15 +158,15 @@ func evalLogLikelihood(data *siteData, params []float64) float64 {
 				Seed:              0,
 			},
 		},
-		InitTimeValue:         data.years[0],
+		InitTimeValue:         d.Years[0],
 		TimestepsHistoryDepth: 2,
 	}
 	settings.Init()
 
 	// Build iterations
 	iterations := []simulator.Iteration{
-		&general.FromStorageIteration{Data: data.logDensity},
-		&general.FromStorageIteration{Data: data.covariates},
+		&general.FromStorageIteration{Data: d.LogDensity},
+		&general.FromStorageIteration{Data: d.Covariates},
 		&population.RickerIteration{},
 		&inference.DataComparisonIteration{
 			Likelihood: &inference.NormalLikelihoodDistribution{},
@@ -195,7 +185,7 @@ func evalLogLikelihood(data *siteData, params []float64) float64 {
 			MaxNumberOfSteps: T - 1,
 		},
 		TimestepFunction: &general.FromStorageTimestepFunction{
-			Data: data.years,
+			Data: d.Years,
 		},
 	}
 
@@ -220,19 +210,19 @@ func evalLogLikelihood(data *siteData, params []float64) float64 {
 
 // runModel runs the Ricker model deterministically (zero process noise)
 // and returns predicted log-densities at each year.
-func runModel(data *siteData, params []float64) []float64 {
-	T := len(data.years)
+func runModel(d *data.SiteData, params []float64) []float64 {
+	T := len(d.Years)
 
 	growthRate := params[0]
 	densityDep := params[1]
 	betas := params[2:5]
 
-	logN := data.logDensity[0][0]
+	logN := d.LogDensity[0][0]
 	predictions := make([]float64, T)
 	predictions[0] = logN
 
 	for t := 1; t < T; t++ {
-		covs := data.covariates[t]
+		covs := d.Covariates[t]
 		envEffect := 0.0
 		k := len(betas)
 		if len(covs) < k {
@@ -246,76 +236,6 @@ func runModel(data *siteData, params []float64) []float64 {
 		predictions[t] = logN
 	}
 	return predictions
-}
-
-func loadSiteData(panelFile string, siteID int) *siteData {
-	f, err := os.Open(panelFile)
-	if err != nil {
-		log.Fatalf("opening panel: %v", err)
-	}
-	defer f.Close()
-
-	r := csv.NewReader(f)
-	headers, err := r.Read()
-	if err != nil {
-		log.Fatalf("reading header: %v", err)
-	}
-
-	idx := make(map[string]int)
-	for i, h := range headers {
-		idx[h] = i
-	}
-
-	var years []float64
-	var logDensities [][]float64
-	var covariates [][]float64
-
-	for {
-		record, err := r.Read()
-		if err != nil {
-			break
-		}
-		id, _ := strconv.Atoi(record[idx["SITE_ID"]])
-		if id != siteID {
-			continue
-		}
-
-		year, _ := strconv.ParseFloat(record[idx["YEAR"]], 64)
-		density, _ := strconv.ParseFloat(record[idx["DENSITY"]], 64)
-
-		// Skip rows with zero density (can't take log)
-		if density <= 0 {
-			continue
-		}
-
-		// Parse covariates (flow, temp, DO) — use 0 for missing
-		flow := parseFloat(record[idx["MEAN_FLOW"]])
-		temp := parseFloat(record[idx["MEAN_TEMP"]])
-		do := parseFloat(record[idx["MEAN_DO"]])
-
-		years = append(years, year)
-		logDensities = append(logDensities, []float64{math.Log(density)})
-		covariates = append(covariates, []float64{flow, temp, do})
-	}
-
-	if len(years) == 0 {
-		log.Fatalf("no data found for site %d", siteID)
-	}
-
-	return &siteData{
-		years:         years,
-		logDensity:    logDensities,
-		covariates:    covariates,
-		numCovariates: 3,
-	}
-}
-
-func parseFloat(s string) float64 {
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0.0
-	}
-	return v
 }
 
 func fmtParams(names []string, vals []float64) string {

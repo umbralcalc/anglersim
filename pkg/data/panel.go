@@ -3,6 +3,7 @@ package data
 import (
 	"bufio"
 	"encoding/csv"
+	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -11,6 +12,85 @@ import (
 	"github.com/go-gota/gota/dataframe"
 	"github.com/go-gota/gota/series"
 )
+
+// SiteData holds the time series for a single site, ready for model fitting.
+type SiteData struct {
+	SiteID        int
+	Years         []float64
+	LogDensity    [][]float64 // [T][1] — observed log-density per year
+	Covariates    [][]float64 // [T][K] — environmental covariates per year
+	NumCovariates int
+}
+
+// LoadSiteTimeSeries reads a panel CSV with covariates and extracts the time
+// series for a single site. Rows with zero density are skipped.
+func LoadSiteTimeSeries(panelFile string, siteID int) *SiteData {
+	f, err := os.Open(panelFile)
+	if err != nil {
+		panic("opening panel: " + err.Error())
+	}
+	defer f.Close()
+
+	r := csv.NewReader(f)
+	headers, err := r.Read()
+	if err != nil {
+		panic("reading header: " + err.Error())
+	}
+
+	idx := make(map[string]int)
+	for i, h := range headers {
+		idx[h] = i
+	}
+
+	var years []float64
+	var logDensities [][]float64
+	var covariates [][]float64
+
+	for {
+		record, err := r.Read()
+		if err != nil {
+			break
+		}
+		id, _ := strconv.Atoi(record[idx["SITE_ID"]])
+		if id != siteID {
+			continue
+		}
+
+		year, _ := strconv.ParseFloat(record[idx["YEAR"]], 64)
+		density, _ := strconv.ParseFloat(record[idx["DENSITY"]], 64)
+		if density <= 0 {
+			continue
+		}
+
+		flow := parseFloatDefault(record[idx["MEAN_FLOW"]])
+		temp := parseFloatDefault(record[idx["MEAN_TEMP"]])
+		do := parseFloatDefault(record[idx["MEAN_DO"]])
+
+		years = append(years, year)
+		logDensities = append(logDensities, []float64{math.Log(density)})
+		covariates = append(covariates, []float64{flow, temp, do})
+	}
+
+	if len(years) == 0 {
+		panic("no data found for site " + strconv.Itoa(siteID))
+	}
+
+	return &SiteData{
+		SiteID:        siteID,
+		Years:         years,
+		LogDensity:    logDensities,
+		Covariates:    covariates,
+		NumCovariates: 3,
+	}
+}
+
+func parseFloatDefault(s string) float64 {
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0.0
+	}
+	return v
+}
 
 // SiteYearRecord holds the prepared data for one site in one year.
 type SiteYearRecord struct {

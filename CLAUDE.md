@@ -10,10 +10,16 @@ pkg/data/          # Data access and preparation
   sites.go          # Sites CSV reader
   types.go          # Data types CSV reader
   coverage.go       # Coverage analysis (GetCoverageReport)
-  panel.go          # Data prep pipeline (BuildPanel → clean site×year panel)
+  panel.go          # Data prep pipeline (BuildPanel, LoadSiteTimeSeries)
   hydrology.go      # EA Hydrology API client (flow stations, daily readings)
   water_quality.go  # EA Water Quality API client (temp, DO, ammonia, BOD)
 pkg/population/     # Stochastic population dynamics models (e.g. ricker.go)
+pkg/inference/      # Bayesian inference
+  priors.go         # Prior distributions (Uniform, TruncatedNormal, HalfNormal, LogNormal)
+  smc.go            # SMC importance sampling using stochadex iterations
+cmd/smc/            # CLI: run SMC inference on a site
+cmd/fit/            # CLI: random-search MLE (baseline)
+cmd/fetchcovariates/ # CLI: fetch EA flow/WQ data for panel sites
 cfg/                # Stochadex YAML configs
 nbs/                # GoNB Jupyter notebooks
   data_exploration.ipynb  # Data exploration and coverage analysis
@@ -84,9 +90,12 @@ Both APIs: no auth required, spatial search by lat/long + radius (km), matched t
 3. ✅ Brown trout panel pipeline built (pkg/data/panel.go)
 4. ✅ EA Hydrology API client built (flow stations, daily readings, annual stats)
 5. ✅ EA Water Quality API client built (temp, DO, ammonia, BOD)
-6. Next: Fetch and cache flow + WQ data for all panel sites, join to panel dataframe
-7. Next: Design and implement stochastic population dynamics model as a stochadex Iteration
-8. Next: Fit model to brown trout panel data using stochadex inference machinery
+6. ✅ Flow + WQ data fetched and cached, joined to panel (cmd/fetchcovariates)
+7. ✅ Stochastic Ricker population model (pkg/population/ricker.go)
+8. ✅ SMC Bayesian inference using stochadex iterations (pkg/inference/smc.go, cmd/smc)
+9. Next: Multi-site batch fitting, hierarchical model across sites
+10. Next: Model validation — held-out prediction, residual diagnostics
+11. Next: Policy simulation scenarios with fitted model
 
 ---
 
