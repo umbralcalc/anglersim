@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/umbralcalc/anglersim/pkg/data"
+	"github.com/umbralcalc/stochadex/pkg/simulator"
 )
 
 // generateSyntheticData creates a synthetic site time series from known
@@ -63,6 +64,43 @@ func generateSyntheticData(
 		Covariates:    covariates,
 		NumCovariates: 3,
 	}
+}
+
+func TestSMCRoundIteration_Harness(t *testing.T) {
+	t.Run(
+		"test that SMCRoundIteration runs with harnesses",
+		func(t *testing.T) {
+			trueParams := []float64{
+				0.5, 2.0, 0.0, 0.0, 0.0, 0.15, 0.1,
+			}
+			d := generateSyntheticData(123, 15, trueParams)
+
+			settings := simulator.LoadSettingsFromYaml(
+				"./smc_round_settings.yaml",
+			)
+
+			smcIter := &SMCRoundIteration{
+				SiteData:     d,
+				Priors:       DefaultRickerPriors(),
+				ParamNames:   DefaultSMCConfig().ParamNames,
+				NumParticles: 50,
+			}
+
+			iterations := []simulator.Iteration{smcIter}
+			implementations := &simulator.Implementations{
+				Iterations:      iterations,
+				OutputCondition: &simulator.EveryStepOutputCondition{},
+				OutputFunction:  &simulator.NilOutputFunction{},
+				TerminationCondition: &simulator.NumberOfStepsTerminationCondition{
+					MaxNumberOfSteps: 2,
+				},
+				TimestepFunction: &simulator.ConstantTimestepFunction{Stepsize: 1.0},
+			}
+			if err := simulator.RunWithHarnesses(settings, implementations); err != nil {
+				t.Errorf("test harness failed: %v", err)
+			}
+		},
+	)
 }
 
 func TestRunSMC_SyntheticRecovery(t *testing.T) {

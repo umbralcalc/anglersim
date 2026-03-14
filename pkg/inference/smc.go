@@ -51,16 +51,223 @@ func DefaultSMCConfig() SMCConfig {
 	}
 }
 
-// Partition index helpers for the layout:
-//   [0]            observed_data  (FromStorageIteration)
-//   [1]            covariates     (FromStorageIteration)
-//   [2+3p]         params_p       (ParamValuesIteration)
-//   [2+3p+1]       ricker_p       (RickerIteration)
-//   [2+3p+2]       loglike_p      (DataComparisonIteration)
-//   [2+3N]         log_norm       (PosteriorLogNormalisationIteration)
-//   [2+3N+1]       posterior_mean (PosteriorMeanIteration)
-//   [2+3N+2]       posterior_cov  (PosteriorCovarianceIteration)
+// SMCRoundIteration implements simulator.Iteration where each step
+// corresponds to one SMC importance sampling round. At each step it:
+//  1. Generates particle proposals (prior on step 0, MVN from previous
+//     posterior on subsequent steps)
+//  2. Builds and runs an embedded inner simulation evaluating all
+//     particles through the data
+//  3. Computes the posterior and returns it as state
+//
+// State layout: [posterior_mean(d) | posterior_cov(d²) | log_marginal_lik(1)]
+// State width: d + d² + 1
+type SMCRoundIteration struct {
+	SiteData     *data.SiteData
+	Priors       []Prior
+	ParamNames   []string
+	NumParticles int
 
+	rng        *rand.Rand
+	nParams    int
+	verbose    bool
+	lastResult *SMCResult // detailed result from the most recent round
+}
+
+func (s *SMCRoundIteration) Configure(
+	partitionIndex int,
+	settings *simulator.Settings,
+) {
+	s.nParams = len(s.Priors)
+	seed := settings.Iterations[partitionIndex].Seed
+	s.rng = rand.New(rand.NewPCG(seed, seed+1))
+	s.verbose = settings.Iterations[partitionIndex].Params.GetIndex(
+		"verbose", 0) > 0
+}
+
+func (s *SMCRoundIteration) Iterate(
+	params *simulator.Params,
+	partitionIndex int,
+	stateHistories []*simulator.StateHistory,
+	timestepsHistory *simulator.CumulativeTimestepsHistory,
+) []float64 {
+	round := timestepsHistory.CurrentStepNumber
+	d := s.nParams
+
+	// Generate particle proposals
+	particleParams := make([][]float64, s.NumParticles)
+	if round == 0 {
+		// First round: draw from prior
+		for p := range s.NumParticles {
+			pp := make([]float64, d)
+			for j, prior := range s.Priors {
+				pp[j] = prior.Sample(s.rng)
+			}
+			particleParams[p] = pp
+		}
+	} else {
+		// Subsequent rounds: draw from MVN using previous posterior
+		prevState := stateHistories[partitionIndex].Values.RawRowView(0)
+		proposalMean := prevState[:d]
+		proposalCov := regulariseCov(prevState[d:d+d*d], d, s.Priors)
+		particleParams = sampleMultivariateNormal(
+			s.rng, s.NumParticles, proposalMean, proposalCov, s.Priors,
+		)
+	}
+
+	if s.verbose {
+		fmt.Printf("Round %d: running %d particles...\n",
+			round+1, s.NumParticles)
+	}
+
+	// Build and run the inner (embedded) simulation
+	settings, implementations, store := buildSMCSimulation(
+		s.SiteData, particleParams,
+	)
+	func() {
+		defer func() { recover() }()
+		coordinator := simulator.NewPartitionCoordinator(
+			settings, implementations,
+		)
+		coordinator.Run()
+	}()
+
+	// Extract results from the inner simulation
+	logLiks := make([]float64, s.NumParticles)
+	for p := range s.NumParticles {
+		name := fmt.Sprintf("loglike_%d", p)
+		vals := store.GetValues(name)
+		if len(vals) == 0 {
+			logLiks[p] = math.Inf(-1)
+		} else {
+			logLiks[p] = vals[len(vals)-1][0]
+			if math.IsNaN(logLiks[p]) {
+				logLiks[p] = math.Inf(-1)
+			}
+		}
+	}
+
+	T := len(s.SiteData.Years)
+	predictions := make([][]float64, T)
+	for t := range T {
+		predictions[t] = make([]float64, s.NumParticles)
+	}
+	for p := range s.NumParticles {
+		name := fmt.Sprintf("ricker_%d", p)
+		vals := store.GetValues(name)
+		predictions[0][p] = s.SiteData.LogDensity[0][0]
+		for t := range len(vals) {
+			if t+1 < T {
+				predictions[t+1][p] = vals[t][0]
+			}
+		}
+	}
+
+	// Compute posterior
+	result := computePosterior(
+		s.ParamNames, particleParams, logLiks, predictions,
+	)
+	result.ParticleParams = particleParams
+	result.ParticleLogLik = logLiks
+	s.lastResult = result
+
+	if s.verbose {
+		fmt.Printf("  Log marginal likelihood: %.4f\n", result.LogMarginalLik)
+		for i, name := range s.ParamNames {
+			fmt.Printf("  %-22s mean=%.4f std=%.4f\n",
+				name, result.PosteriorMean[i], result.PosteriorStd[i])
+		}
+	}
+
+	// Pack state: [posterior_mean | posterior_cov | log_marginal_lik]
+	state := make([]float64, d+d*d+1)
+	copy(state[:d], result.PosteriorMean)
+	copy(state[d:d+d*d], result.PosteriorCov)
+	state[d+d*d] = result.LogMarginalLik
+	return state
+}
+
+// LastResult returns the detailed SMCResult from the most recent round.
+func (s *SMCRoundIteration) LastResult() *SMCResult {
+	return s.lastResult
+}
+
+// RunSMC runs iterated importance sampling for the Ricker model as a
+// stochadex simulation. Each simulation step corresponds to one SMC round:
+// drawing parameter proposals, running the full particle evaluation via
+// an embedded inner simulation, and computing the posterior.
+func RunSMC(d *data.SiteData, config SMCConfig) *SMCResult {
+	nParams := len(config.Priors)
+	stateWidth := nParams + nParams*nParams + 1
+
+	// Initial state: zero mean, identity cov, zero log-marginal-lik
+	initState := make([]float64, stateWidth)
+	for j := range nParams {
+		initState[nParams+j*nParams+j] = 1.0
+	}
+
+	smcIter := &SMCRoundIteration{
+		SiteData:     d,
+		Priors:       config.Priors,
+		ParamNames:   config.ParamNames,
+		NumParticles: config.NumParticles,
+	}
+
+	verboseFlag := 0.0
+	if config.Verbose {
+		verboseFlag = 1.0
+	}
+
+	settings := &simulator.Settings{
+		Iterations: []simulator.IterationSettings{
+			{
+				Name: "smc_round",
+				Params: simulator.NewParams(map[string][]float64{
+					"verbose": {verboseFlag},
+				}),
+				InitStateValues:   initState,
+				StateWidth:        stateWidth,
+				StateHistoryDepth: 2,
+				Seed:              config.Seed,
+			},
+		},
+		InitTimeValue:         0.0,
+		TimestepsHistoryDepth: 2,
+	}
+	settings.Init()
+
+	smcIter.Configure(0, settings)
+
+	implementations := &simulator.Implementations{
+		Iterations:      []simulator.Iteration{smcIter},
+		OutputCondition: &simulator.EveryStepOutputCondition{},
+		OutputFunction:  &simulator.NilOutputFunction{},
+		TerminationCondition: &simulator.NumberOfStepsTerminationCondition{
+			MaxNumberOfSteps: config.NumRounds,
+		},
+		TimestepFunction: &simulator.ConstantTimestepFunction{Stepsize: 1.0},
+	}
+
+	func() {
+		defer func() { recover() }()
+		coordinator := simulator.NewPartitionCoordinator(
+			settings, implementations,
+		)
+		coordinator.Run()
+	}()
+
+	return smcIter.LastResult()
+}
+
+// Partition index helpers for the inner simulation layout:
+//
+//	[0]            observed_data  (FromStorageIteration)
+//	[1]            covariates     (FromStorageIteration)
+//	[2+3p]         params_p       (ParamValuesIteration)
+//	[2+3p+1]       ricker_p       (RickerIteration)
+//	[2+3p+2]       loglike_p      (DataComparisonIteration)
+//	[2+3N]         log_norm       (PosteriorLogNormalisationIteration)
+//	[2+3N+1]       posterior_mean (PosteriorMeanIteration)
+//	[2+3N+2]       posterior_cov  (PosteriorCovarianceIteration)
 func paramsIdx(p int) int  { return 2 + 3*p }
 func rickerIdx(p int) int  { return 2 + 3*p + 1 }
 func loglikeIdx(p int) int { return 2 + 3*p + 2 }
@@ -68,8 +275,9 @@ func logNormIdx(n int) int { return 2 + 3*n }
 func postMeanIdx(n int) int { return 2 + 3*n + 1 }
 func postCovIdx(n int) int  { return 2 + 3*n + 2 }
 
-// buildSMCSimulation constructs a stochadex simulation with N parallel
-// particle evaluation pipelines plus posterior aggregation partitions.
+// buildSMCSimulation constructs the inner stochadex simulation with N
+// parallel particle evaluation pipelines plus posterior aggregation
+// partitions.
 func buildSMCSimulation(
 	d *data.SiteData,
 	particleParams [][]float64,
@@ -184,7 +392,7 @@ func buildSMCSimulation(
 	iterSettings[lnIdx] = simulator.IterationSettings{
 		Name: "log_norm",
 		Params: simulator.NewParams(map[string][]float64{
-			"loglike_partitions":     loglikePartitionIndices,
+			"loglike_partitions":      loglikePartitionIndices,
 			"past_discounting_factor": {0.001}, // effectively use only current step
 		}),
 		InitStateValues:   []float64{0.0},
@@ -208,7 +416,7 @@ func buildSMCSimulation(
 	iterSettings[pmIdx] = simulator.IterationSettings{
 		Name: "posterior_mean",
 		Params: simulator.NewParams(map[string][]float64{
-			"param_partitions":  paramPartitionIndices,
+			"param_partitions":   paramPartitionIndices,
 			"loglike_partitions": loglikePartitionIndices,
 		}),
 		ParamsFromUpstream: map[string]simulator.UpstreamConfig{
@@ -232,13 +440,13 @@ func buildSMCSimulation(
 	iterSettings[pcIdx] = simulator.IterationSettings{
 		Name: "posterior_cov",
 		Params: simulator.NewParams(map[string][]float64{
-			"param_partitions":  paramPartitionIndices,
+			"param_partitions":   paramPartitionIndices,
 			"loglike_partitions": loglikePartitionIndices,
-			"mean":              initMean,
+			"mean":               initMean,
 		}),
 		ParamsFromUpstream: map[string]simulator.UpstreamConfig{
 			"posterior_log_normalisation": {Upstream: lnIdx},
-			"mean":                       {Upstream: pmIdx},
+			"mean":                        {Upstream: pmIdx},
 		},
 		InitStateValues:   initCov,
 		StateWidth:        nParams * nParams,
@@ -274,109 +482,6 @@ func buildSMCSimulation(
 	}
 
 	return settings, implementations, store
-}
-
-// RunSMC runs iterated importance sampling for the Ricker model using
-// stochadex iterations. Each round draws parameter proposals, runs the
-// full simulation, and computes the posterior. Subsequent rounds use the
-// previous round's posterior as the proposal distribution.
-func RunSMC(d *data.SiteData, config SMCConfig) *SMCResult {
-	nParams := len(config.Priors)
-	rng := rand.New(rand.NewPCG(config.Seed, config.Seed+1))
-
-	var proposalMean []float64
-	var proposalCov []float64
-	var result *SMCResult
-
-	for round := range config.NumRounds {
-		// Draw particle parameters
-		particleParams := make([][]float64, config.NumParticles)
-
-		if round == 0 {
-			// Round 1: draw from prior
-			for p := range config.NumParticles {
-				pp := make([]float64, nParams)
-				for j, prior := range config.Priors {
-					pp[j] = prior.Sample(rng)
-				}
-				particleParams[p] = pp
-			}
-		} else {
-			// Subsequent rounds: draw from Normal(proposalMean, proposalCov)
-			particleParams = sampleMultivariateNormal(
-				rng, config.NumParticles, proposalMean, proposalCov, config.Priors,
-			)
-		}
-
-		if config.Verbose {
-			fmt.Printf("Round %d/%d: running %d particles...\n",
-				round+1, config.NumRounds, config.NumParticles)
-		}
-
-		// Build and run simulation
-		settings, implementations, store := buildSMCSimulation(d, particleParams)
-
-		func() {
-			defer func() { recover() }()
-			coordinator := simulator.NewPartitionCoordinator(settings, implementations)
-			coordinator.Run()
-		}()
-
-		// Extract final cumulative log-likelihoods from store
-		logLiks := make([]float64, config.NumParticles)
-		for p := range config.NumParticles {
-			name := fmt.Sprintf("loglike_%d", p)
-			vals := store.GetValues(name)
-			if len(vals) == 0 {
-				logLiks[p] = math.Inf(-1)
-			} else {
-				logLiks[p] = vals[len(vals)-1][0]
-				if math.IsNaN(logLiks[p]) {
-					logLiks[p] = math.Inf(-1)
-				}
-			}
-		}
-
-		// Extract predictions (ricker output at each step)
-		T := len(d.Years)
-		predictions := make([][]float64, T)
-		for t := range T {
-			predictions[t] = make([]float64, config.NumParticles)
-		}
-		for p := range config.NumParticles {
-			name := fmt.Sprintf("ricker_%d", p)
-			vals := store.GetValues(name)
-			// vals[0] is after step 1, vals[T-2] is after step T-1
-			// init state is predictions[0]
-			predictions[0][p] = d.LogDensity[0][0]
-			for t := range len(vals) {
-				if t+1 < T {
-					predictions[t+1][p] = vals[t][0]
-				}
-			}
-		}
-
-		// Compute posterior from weighted particles
-		result = computePosterior(
-			config.ParamNames, particleParams, logLiks, predictions,
-		)
-		result.ParticleParams = particleParams
-		result.ParticleLogLik = logLiks
-
-		// Set up proposal for next round, with regularisation to prevent collapse
-		proposalMean = result.PosteriorMean
-		proposalCov = regulariseCov(result.PosteriorCov, nParams, config.Priors)
-
-		if config.Verbose {
-			fmt.Printf("  Log marginal likelihood: %.4f\n", result.LogMarginalLik)
-			for i, name := range config.ParamNames {
-				fmt.Printf("  %-22s mean=%.4f std=%.4f\n",
-					name, result.PosteriorMean[i], result.PosteriorStd[i])
-			}
-		}
-	}
-
-	return result
 }
 
 // computePosterior computes posterior statistics from weighted particles.
