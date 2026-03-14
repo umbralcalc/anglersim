@@ -9,7 +9,7 @@ import (
 	"github.com/umbralcalc/stochadex/pkg/simulator"
 )
 
-// generateSyntheticData creates a synthetic site time series from known
+// GenerateSyntheticData creates a synthetic site time series from known
 // Ricker model parameters, for testing parameter recovery.
 func generateSyntheticData(
 	seed uint64,
@@ -80,10 +80,9 @@ func TestSMCRoundIteration_Harness(t *testing.T) {
 			)
 
 			smcIter := &SMCRoundIteration{
-				SiteData:     d,
-				Priors:       DefaultRickerPriors(),
-				ParamNames:   DefaultSMCConfig().ParamNames,
-				NumParticles: 50,
+				SiteData:   d,
+				Priors:     DefaultRickerPriors(),
+				ParamNames: DefaultSMCConfig().ParamNames,
 			}
 
 			iterations := []simulator.Iteration{smcIter}

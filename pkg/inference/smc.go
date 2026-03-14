@@ -51,6 +51,77 @@ func DefaultSMCConfig() SMCConfig {
 	}
 }
 
+// Prior type codes for params-based configuration.
+const (
+	PriorTypeUniform         = 0
+	PriorTypeTruncatedNormal = 1
+	PriorTypeHalfNormal      = 2
+	PriorTypeLogNormal       = 3
+)
+
+// PriorParamsStride is the number of float64 values per prior in the
+// prior_params encoding. Each prior type uses a subset:
+//
+//	Uniform (0):         [lo, hi, 0, 0]
+//	TruncatedNormal (1): [mu, sigma, lo, hi]
+//	HalfNormal (2):      [sigma, 0, 0, 0]
+//	LogNormal (3):       [mu, sigma, 0, 0]
+const PriorParamsStride = 4
+
+// DecodePriors builds a []Prior from params-encoded type codes and
+// parameter values. prior_types has length d, prior_params has length
+// 4*d (PriorParamsStride per prior).
+func DecodePriors(priorTypes, priorParams []float64) []Prior {
+	d := len(priorTypes)
+	priors := make([]Prior, d)
+	for i := range d {
+		pp := priorParams[i*PriorParamsStride : (i+1)*PriorParamsStride]
+		switch int(priorTypes[i]) {
+		case PriorTypeUniform:
+			priors[i] = &UniformPrior{Lo: pp[0], Hi: pp[1]}
+		case PriorTypeTruncatedNormal:
+			priors[i] = &TruncatedNormalPrior{
+				Mu: pp[0], Sigma: pp[1], Lo: pp[2], Hi: pp[3],
+			}
+		case PriorTypeHalfNormal:
+			priors[i] = &HalfNormalPrior{Sigma: pp[0]}
+		case PriorTypeLogNormal:
+			priors[i] = &LogNormalPrior{Mu: pp[0], Sigma: pp[1]}
+		default:
+			panic(fmt.Sprintf("unknown prior type code: %v", priorTypes[i]))
+		}
+	}
+	return priors
+}
+
+// EncodePriors converts a []Prior into params-compatible slices
+// (prior_types and prior_params) for YAML configuration.
+func EncodePriors(priors []Prior) (priorTypes, priorParams []float64) {
+	d := len(priors)
+	priorTypes = make([]float64, d)
+	priorParams = make([]float64, d*PriorParamsStride)
+	for i, p := range priors {
+		pp := priorParams[i*PriorParamsStride : (i+1)*PriorParamsStride]
+		switch v := p.(type) {
+		case *UniformPrior:
+			priorTypes[i] = PriorTypeUniform
+			pp[0], pp[1] = v.Lo, v.Hi
+		case *TruncatedNormalPrior:
+			priorTypes[i] = PriorTypeTruncatedNormal
+			pp[0], pp[1], pp[2], pp[3] = v.Mu, v.Sigma, v.Lo, v.Hi
+		case *HalfNormalPrior:
+			priorTypes[i] = PriorTypeHalfNormal
+			pp[0] = v.Sigma
+		case *LogNormalPrior:
+			priorTypes[i] = PriorTypeLogNormal
+			pp[0], pp[1] = v.Mu, v.Sigma
+		default:
+			panic(fmt.Sprintf("unknown prior type: %T", p))
+		}
+	}
+	return
+}
+
 // SMCRoundIteration implements simulator.Iteration where each step
 // corresponds to one SMC importance sampling round. At each step it:
 //  1. Generates particle proposals (prior on step 0, MVN from previous
@@ -61,27 +132,67 @@ func DefaultSMCConfig() SMCConfig {
 //
 // State layout: [posterior_mean(d) | posterior_cov(d²) | log_marginal_lik(1)]
 // State width: d + d² + 1
+//
+// Configuration can be set either programmatically (struct fields) or
+// via params for the stochadex YAML API:
+//
+//	Params:
+//	  num_particles:  [200]
+//	  prior_types:    [1, 3, 1, 1, 1, 2, 2]       (type codes per param)
+//	  prior_params:   [mu, sigma, lo, hi, ...]     (4 values per prior)
+//	  verbose:        [0]                          (optional, 1 to enable)
+//
+// SiteData must be set on the struct (e.g. via extra_vars in YAML).
 type SMCRoundIteration struct {
-	SiteData     *data.SiteData
-	Priors       []Prior
-	ParamNames   []string
-	NumParticles int
+	SiteData   *data.SiteData
+	Priors     []Prior
+	ParamNames []string
 
-	rng        *rand.Rand
-	nParams    int
-	verbose    bool
-	lastResult *SMCResult // detailed result from the most recent round
+	rng          *rand.Rand
+	numParticles int
+	nParams      int
+	verbose      bool
+	lastResult   *SMCResult // detailed result from the most recent round
 }
 
 func (s *SMCRoundIteration) Configure(
 	partitionIndex int,
 	settings *simulator.Settings,
 ) {
-	s.nParams = len(s.Priors)
+	iterParams := settings.Iterations[partitionIndex].Params
 	seed := settings.Iterations[partitionIndex].Seed
 	s.rng = rand.New(rand.NewPCG(seed, seed+1))
-	s.verbose = settings.Iterations[partitionIndex].Params.GetIndex(
-		"verbose", 0) > 0
+	s.verbose = iterParams.GetIndex("verbose", 0) > 0
+
+	// NumParticles: from params or struct field
+	if np, ok := iterParams.GetOk("num_particles"); ok {
+		s.numParticles = int(np[0])
+	}
+	if s.numParticles == 0 {
+		panic("SMCRoundIteration: num_particles must be set " +
+			"(via params or struct field)")
+	}
+
+	// Priors: from params or struct field
+	if s.Priors == nil {
+		priorTypes, ok1 := iterParams.GetOk("prior_types")
+		priorParams, ok2 := iterParams.GetOk("prior_params")
+		if ok1 && ok2 {
+			s.Priors = DecodePriors(priorTypes, priorParams)
+		} else {
+			panic("SMCRoundIteration: priors must be set " +
+				"(via params prior_types/prior_params or struct field)")
+		}
+	}
+	s.nParams = len(s.Priors)
+
+	// ParamNames: auto-generate if not set
+	if len(s.ParamNames) == 0 {
+		s.ParamNames = make([]string, s.nParams)
+		for i := range s.nParams {
+			s.ParamNames[i] = fmt.Sprintf("param_%d", i)
+		}
+	}
 }
 
 func (s *SMCRoundIteration) Iterate(
@@ -94,10 +205,10 @@ func (s *SMCRoundIteration) Iterate(
 	d := s.nParams
 
 	// Generate particle proposals
-	particleParams := make([][]float64, s.NumParticles)
+	particleParams := make([][]float64, s.numParticles)
 	if round == 0 {
 		// First round: draw from prior
-		for p := range s.NumParticles {
+		for p := range s.numParticles {
 			pp := make([]float64, d)
 			for j, prior := range s.Priors {
 				pp[j] = prior.Sample(s.rng)
@@ -110,13 +221,13 @@ func (s *SMCRoundIteration) Iterate(
 		proposalMean := prevState[:d]
 		proposalCov := regulariseCov(prevState[d:d+d*d], d, s.Priors)
 		particleParams = sampleMultivariateNormal(
-			s.rng, s.NumParticles, proposalMean, proposalCov, s.Priors,
+			s.rng, s.numParticles, proposalMean, proposalCov, s.Priors,
 		)
 	}
 
 	if s.verbose {
 		fmt.Printf("Round %d: running %d particles...\n",
-			round+1, s.NumParticles)
+			round+1, s.numParticles)
 	}
 
 	// Build and run the inner (embedded) simulation
@@ -132,8 +243,8 @@ func (s *SMCRoundIteration) Iterate(
 	}()
 
 	// Extract results from the inner simulation
-	logLiks := make([]float64, s.NumParticles)
-	for p := range s.NumParticles {
+	logLiks := make([]float64, s.numParticles)
+	for p := range s.numParticles {
 		name := fmt.Sprintf("loglike_%d", p)
 		vals := store.GetValues(name)
 		if len(vals) == 0 {
@@ -149,9 +260,9 @@ func (s *SMCRoundIteration) Iterate(
 	T := len(s.SiteData.Years)
 	predictions := make([][]float64, T)
 	for t := range T {
-		predictions[t] = make([]float64, s.NumParticles)
+		predictions[t] = make([]float64, s.numParticles)
 	}
-	for p := range s.NumParticles {
+	for p := range s.numParticles {
 		name := fmt.Sprintf("ricker_%d", p)
 		vals := store.GetValues(name)
 		predictions[0][p] = s.SiteData.LogDensity[0][0]
@@ -206,10 +317,9 @@ func RunSMC(d *data.SiteData, config SMCConfig) *SMCResult {
 	}
 
 	smcIter := &SMCRoundIteration{
-		SiteData:     d,
-		Priors:       config.Priors,
-		ParamNames:   config.ParamNames,
-		NumParticles: config.NumParticles,
+		SiteData:   d,
+		Priors:     config.Priors,
+		ParamNames: config.ParamNames,
 	}
 
 	verboseFlag := 0.0
@@ -217,12 +327,17 @@ func RunSMC(d *data.SiteData, config SMCConfig) *SMCResult {
 		verboseFlag = 1.0
 	}
 
+	priorTypes, priorParams := EncodePriors(config.Priors)
+
 	settings := &simulator.Settings{
 		Iterations: []simulator.IterationSettings{
 			{
 				Name: "smc_round",
 				Params: simulator.NewParams(map[string][]float64{
-					"verbose": {verboseFlag},
+					"verbose":       {verboseFlag},
+					"num_particles": {float64(config.NumParticles)},
+					"prior_types":   priorTypes,
+					"prior_params":  priorParams,
 				}),
 				InitStateValues:   initState,
 				StateWidth:        stateWidth,

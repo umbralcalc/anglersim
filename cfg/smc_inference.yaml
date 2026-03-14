@@ -1,0 +1,53 @@
+main:
+  partitions:
+
+  - name: smc_round
+    iteration: smcIter
+    params:
+      num_particles: [200]
+      verbose: [1]
+      # Prior type codes: 0=Uniform, 1=TruncatedNormal, 2=HalfNormal, 3=LogNormal
+      prior_types: [1, 3, 1, 1, 1, 2, 2]
+      # 4 values per prior (stride=4):
+      #   growth_rate      TruncNorm(mu=0.5, sigma=1.0, lo=-2, hi=5)
+      #   density_depend.  LogNorm(mu=0.5, sigma=1.5)
+      #   beta_flow        TruncNorm(mu=0, sigma=0.3, lo=-2, hi=2)
+      #   beta_temp        TruncNorm(mu=0, sigma=0.3, lo=-2, hi=2)
+      #   beta_do          TruncNorm(mu=0, sigma=0.3, lo=-2, hi=2)
+      #   process_noise_sd HalfNorm(sigma=0.5)
+      #   obs_noise_sd     HalfNorm(sigma=0.5)
+      prior_params: [
+        0.5, 1.0, -2.0, 5.0,
+        0.5, 1.5, 0, 0,
+        0, 0.3, -2.0, 2.0,
+        0, 0.3, -2.0, 2.0,
+        0, 0.3, -2.0, 2.0,
+        0.5, 0, 0, 0,
+        0.5, 0, 0, 0
+      ]
+    # State layout: posterior_mean(7) | posterior_cov(49) | log_marginal_lik(1)
+    init_state_values: [
+      0, 0, 0, 0, 0, 0, 0,
+      1, 0, 0, 0, 0, 0, 0,
+      0, 1, 0, 0, 0, 0, 0,
+      0, 0, 1, 0, 0, 0, 0,
+      0, 0, 0, 1, 0, 0, 0,
+      0, 0, 0, 0, 1, 0, 0,
+      0, 0, 0, 0, 0, 1, 0,
+      0, 0, 0, 0, 0, 0, 1,
+      0
+    ]
+    state_history_depth: 2
+    seed: 42
+    extra_packages:
+    - github.com/umbralcalc/anglersim/pkg/inference
+    - github.com/umbralcalc/anglersim/pkg/data
+    extra_vars:
+    - smcIter: "&inference.SMCRoundIteration{SiteData: data.LoadSiteTimeSeries(\"dat/brown_trout_panel_with_covariates.csv\", 1915)}"
+
+  simulation:
+    output_condition: "&simulator.EveryStepOutputCondition{}"
+    output_function: "&simulator.StdoutOutputFunction{}"
+    termination_condition: "&simulator.NumberOfStepsTerminationCondition{MaxNumberOfSteps: 3}"
+    timestep_function: "&simulator.ConstantTimestepFunction{Stepsize: 1.0}"
+    init_time_value: 0.0
