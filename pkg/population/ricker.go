@@ -3,7 +3,7 @@ package population
 import (
 	"math"
 
-	"golang.org/x/exp/rand"
+	"math/rand/v2"
 
 	"github.com/umbralcalc/stochadex/pkg/simulator"
 )
@@ -32,9 +32,10 @@ func (r *RickerIteration) Configure(
 	partitionIndex int,
 	settings *simulator.Settings,
 ) {
-	r.rng = rand.New(rand.NewSource(
-		settings.Iterations[partitionIndex].Seed),
-	)
+	r.rng = rand.New(rand.NewPCG(
+		settings.Iterations[partitionIndex].Seed,
+		settings.Iterations[partitionIndex].Seed,
+	))
 }
 
 func (r *RickerIteration) Iterate(

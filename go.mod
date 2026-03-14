@@ -5,7 +5,6 @@ go 1.25.0
 require (
 	github.com/go-gota/gota v0.12.0
 	github.com/umbralcalc/stochadex v0.0.0-20260220081012-a9d51ff27f7c
-	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa
 	gonum.org/v1/gonum v0.16.0
 )
 
