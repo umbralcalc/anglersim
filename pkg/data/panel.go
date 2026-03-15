@@ -150,6 +150,31 @@ func LoadAllSiteTimeSeries(panelFile string) map[int]*SiteData {
 	return result
 }
 
+// TruncateSiteData splits a site's time series into train (first T-holdout
+// years) and test (last holdout years). Panics if holdout >= T.
+func TruncateSiteData(sd *SiteData, holdout int) (train, test *SiteData) {
+	T := len(sd.Years)
+	if holdout >= T {
+		panic("holdout must be less than total years")
+	}
+	split := T - holdout
+	train = &SiteData{
+		SiteID:        sd.SiteID,
+		Years:         sd.Years[:split],
+		LogDensity:    sd.LogDensity[:split],
+		Covariates:    sd.Covariates[:split],
+		NumCovariates: sd.NumCovariates,
+	}
+	test = &SiteData{
+		SiteID:        sd.SiteID,
+		Years:         sd.Years[split:],
+		LogDensity:    sd.LogDensity[split:],
+		Covariates:    sd.Covariates[split:],
+		NumCovariates: sd.NumCovariates,
+	}
+	return
+}
+
 func parseFloatDefault(s string) float64 {
 	v, err := strconv.ParseFloat(s, 64)
 	if err != nil {

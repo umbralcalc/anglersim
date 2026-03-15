@@ -9,3 +9,6 @@ fit
 
 batchsmc
 !cmd/batchsmc/
+
+validate
+!cmd/validate/
