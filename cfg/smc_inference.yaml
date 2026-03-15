@@ -1,21 +1,41 @@
+# SMC inference using EmbeddedSimulationRunIteration.
+# N=2 particles, d=7 params. For larger N, use RunSMC() directly.
+#
+# Outer partition layout:
+#   [0] smc_proposals   SMCProposalIteration        (N*d = 14 state)
+#   [1] smc_sim         EmbeddedSimulationRunIteration (concat inner states = 8)
+#   [2] smc_posterior   SMCPosteriorIteration        (d + d² + 1 = 57 state)
+#
+# Inner partition layout (inside smc_sim):
+#   [0] observed_data   FromStorageIteration         (1 state)
+#   [1] covariates      FromStorageIteration         (3 state)
+#   [2] ricker_0        RickerIteration              (1 state)
+#   [3] loglike_0       DataComparisonIteration      (1 state)
+#   [4] ricker_1        RickerIteration              (1 state)
+#   [5] loglike_1       DataComparisonIteration      (1 state)
+#
+# Embedded output (concatenated): [obs(1) cov(3) ricker0(1) ll0(1) ricker1(1) ll1(1)] = 8
+# Loglike offsets: ll0 at index 5, ll1 at index 7
+
 main:
   partitions:
 
-  - name: smc_round
-    iteration: smcIter
+  - name: smc_proposals
+    iteration: proposalIter
     params:
-      num_particles: [200]
+      num_particles: [2]
       verbose: [1]
-      # Prior type codes: 0=Uniform, 1=TruncatedNormal, 2=HalfNormal, 3=LogNormal
-      prior_types: [1, 3, 1, 1, 1, 2, 2]
-      # 4 values per prior (stride=4):
-      #   growth_rate      TruncNorm(mu=0.5, sigma=1.0, lo=-2, hi=5)
-      #   density_depend.  LogNorm(mu=0.5, sigma=1.5)
-      #   beta_flow        TruncNorm(mu=0, sigma=0.3, lo=-2, hi=2)
-      #   beta_temp        TruncNorm(mu=0, sigma=0.3, lo=-2, hi=2)
-      #   beta_do          TruncNorm(mu=0, sigma=0.3, lo=-2, hi=2)
-      #   process_noise_sd HalfNorm(sigma=0.5)
-      #   obs_noise_sd     HalfNorm(sigma=0.5)
+      posterior_partition: [0]  # resolved via params_as_partitions
+      # prior types: TruncNorm=1, LogNorm=3, HalfNorm=2
+      prior_types: [1, 3, 1, 1, 1, 2, 3]
+      # prior params (4 per prior, stride=4):
+      #   growth_rate:       TruncNorm(0.5, 1.0, -2.0, 5.0)
+      #   density_dep:       LogNorm(0.5, 1.5, -, -)
+      #   beta_flow:         TruncNorm(0, 0.3, -2.0, 2.0)
+      #   beta_temp:         TruncNorm(0, 0.3, -2.0, 2.0)
+      #   beta_do:           TruncNorm(0, 0.3, -2.0, 2.0)
+      #   process_noise_sd:  HalfNorm(0.5, -, -, -)
+      #   obs_noise_var:     LogNorm(-1.5, 1.0, -, -)
       prior_params: [
         0.5, 1.0, -2.0, 5.0,
         0.5, 1.5, 0, 0,
@@ -23,9 +43,78 @@ main:
         0, 0.3, -2.0, 2.0,
         0, 0.3, -2.0, 2.0,
         0.5, 0, 0, 0,
-        0.5, 0, 0, 0
+        -1.5, 1.0, 0, 0
       ]
-    # State layout: posterior_mean(7) | posterior_cov(49) | log_marginal_lik(1)
+    params_as_partitions:
+      posterior_partition: [smc_posterior]
+    # state_width = N*d = 2*7 = 14
+    init_state_values: [0,0,0,0,0,0,0, 0,0,0,0,0,0,0]
+    state_history_depth: 2
+    seed: 42
+    extra_packages:
+    - github.com/umbralcalc/anglersim/pkg/inference
+    extra_vars:
+    - proposalIter: "&inference.SMCProposalIteration{}"
+
+  # smc_sim has no iteration — matched by the embedded run below.
+  # Particle params forwarded from proposals via indexed params_from_upstream.
+  - name: smc_sim
+    params:
+      init_time_value: [0]  # overridden to siteData.Years[0] via extra_vars
+      burn_in_steps: [0]
+    params_from_upstream:
+      # Particle 0 (base offset 0*7 = 0)
+      ricker_0/growth_rate:
+        upstream: smc_proposals
+        indices: [0]
+      ricker_0/density_dependence:
+        upstream: smc_proposals
+        indices: [1]
+      ricker_0/covariate_coefficients:
+        upstream: smc_proposals
+        indices: [2, 3, 4]
+      ricker_0/process_noise_sd:
+        upstream: smc_proposals
+        indices: [5]
+      loglike_0/variance:
+        upstream: smc_proposals
+        indices: [6]
+      # Particle 1 (base offset 1*7 = 7)
+      ricker_1/growth_rate:
+        upstream: smc_proposals
+        indices: [7]
+      ricker_1/density_dependence:
+        upstream: smc_proposals
+        indices: [8]
+      ricker_1/covariate_coefficients:
+        upstream: smc_proposals
+        indices: [9, 10, 11]
+      ricker_1/process_noise_sd:
+        upstream: smc_proposals
+        indices: [12]
+      loglike_1/variance:
+        upstream: smc_proposals
+        indices: [13]
+    # state_width = 1 + 3 + 2*2 = 8
+    init_state_values: [0, 0,0,0, 0,0, 0,0]
+    state_history_depth: 2
+    seed: 142
+
+  - name: smc_posterior
+    iteration: posteriorIter
+    params:
+      verbose: [1]
+      num_particles: [2]
+      num_params: [7]
+      particle_loglikes: [0, 0]
+      particle_params: [0,0,0,0,0,0,0, 0,0,0,0,0,0,0]
+    params_from_upstream:
+      particle_loglikes:
+        upstream: smc_sim
+        indices: [5, 7]  # loglike offsets in embedded output
+      particle_params:
+        upstream: smc_proposals
+    # state_width = d + d² + 1 = 7 + 49 + 1 = 57
     init_state_values: [
       0, 0, 0, 0, 0, 0, 0,
       1, 0, 0, 0, 0, 0, 0,
@@ -38,16 +127,131 @@ main:
       0
     ]
     state_history_depth: 2
-    seed: 42
+    seed: 0
     extra_packages:
     - github.com/umbralcalc/anglersim/pkg/inference
-    - github.com/umbralcalc/anglersim/pkg/data
     extra_vars:
-    - smcIter: "&inference.SMCRoundIteration{SiteData: data.LoadSiteTimeSeries(\"dat/brown_trout_panel_with_covariates.csv\", 1915)}"
+    - posteriorIter: "&inference.SMCPosteriorIteration{}"
 
   simulation:
     output_condition: "&simulator.EveryStepOutputCondition{}"
     output_function: "&simulator.StdoutOutputFunction{}"
     termination_condition: "&simulator.NumberOfStepsTerminationCondition{MaxNumberOfSteps: 3}"
     timestep_function: "&simulator.ConstantTimestepFunction{Stepsize: 1.0}"
+    init_time_value: 0.0
+
+# Inner simulation — wrapped by EmbeddedSimulationRunIteration for the
+# smc_sim partition above. Runs N=2 Ricker particles through the data.
+embedded:
+- name: smc_sim
+  partitions:
+  - name: observed_data
+    iteration: observedDataIter
+    params: {}
+    init_state_values: [0]
+    state_history_depth: 2
+    seed: 0
+    extra_packages:
+    - github.com/umbralcalc/stochadex/pkg/general
+    - github.com/umbralcalc/anglersim/pkg/data
+    extra_vars:
+    - siteData: 'data.LoadSiteTimeSeries("dat/brown_trout_panel_with_covariates.csv", 1915)'
+    - observedDataIter: "&general.FromStorageIteration{Data: siteData.LogDensity}"
+
+  - name: covariates
+    iteration: covariatesIter
+    params: {}
+    init_state_values: [0, 0, 0]
+    state_history_depth: 2
+    seed: 0
+    extra_packages:
+    - github.com/umbralcalc/stochadex/pkg/general
+    extra_vars:
+    - covariatesIter: "&general.FromStorageIteration{Data: siteData.Covariates}"
+
+  - name: ricker_0
+    iteration: ricker0Iter
+    params:
+      growth_rate: [0]
+      density_dependence: [0]
+      covariate_coefficients: [0, 0, 0]
+      covariates: [0, 0, 0]
+      process_noise_sd: [0]
+    params_from_upstream:
+      covariates:
+        upstream: covariates
+    init_state_values: [0]
+    state_history_depth: 2
+    seed: 1
+    extra_packages:
+    - github.com/umbralcalc/anglersim/pkg/population
+    extra_vars:
+    - ricker0Iter: "&population.RickerIteration{}"
+
+  - name: loglike_0
+    iteration: loglike0Iter
+    params:
+      mean: [0]
+      variance: [1]
+      latest_data_values: [0]
+      cumulative: [1]
+      burn_in_steps: [0]
+    params_from_upstream:
+      mean:
+        upstream: ricker_0
+      latest_data_values:
+        upstream: observed_data
+    init_state_values: [0]
+    state_history_depth: 2
+    seed: 0
+    extra_packages:
+    - github.com/umbralcalc/anglersim/pkg/inference
+    extra_vars:
+    - loglike0Iter: "inference.NewNormalDataComparison()"
+
+  - name: ricker_1
+    iteration: ricker1Iter
+    params:
+      growth_rate: [0]
+      density_dependence: [0]
+      covariate_coefficients: [0, 0, 0]
+      covariates: [0, 0, 0]
+      process_noise_sd: [0]
+    params_from_upstream:
+      covariates:
+        upstream: covariates
+    init_state_values: [0]
+    state_history_depth: 2
+    seed: 2
+    extra_packages:
+    - github.com/umbralcalc/anglersim/pkg/population
+    extra_vars:
+    - ricker1Iter: "&population.RickerIteration{}"
+
+  - name: loglike_1
+    iteration: loglike1Iter
+    params:
+      mean: [0]
+      variance: [1]
+      latest_data_values: [0]
+      cumulative: [1]
+      burn_in_steps: [0]
+    params_from_upstream:
+      mean:
+        upstream: ricker_1
+      latest_data_values:
+        upstream: observed_data
+    init_state_values: [0]
+    state_history_depth: 2
+    seed: 0
+    extra_packages:
+    - github.com/umbralcalc/anglersim/pkg/inference
+    extra_vars:
+    - loglike1Iter: "inference.NewNormalDataComparison()"
+
+  simulation:
+    output_condition: "&simulator.NilOutputCondition{}"
+    output_function: "&simulator.NilOutputFunction{}"
+    termination_condition: "&simulator.NumberOfStepsTerminationCondition{MaxNumberOfSteps: len(siteData.Years) - 1}"
+    timestep_function: "&general.FromStorageTimestepFunction{Data: siteData.Years}"
     init_time_value: 0.0

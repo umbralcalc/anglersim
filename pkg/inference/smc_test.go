@@ -6,15 +6,16 @@ import (
 	"testing"
 
 	"github.com/umbralcalc/anglersim/pkg/data"
+	"github.com/umbralcalc/stochadex/pkg/general"
 	"github.com/umbralcalc/stochadex/pkg/simulator"
 )
 
-// GenerateSyntheticData creates a synthetic site time series from known
+// generateSyntheticData creates a synthetic site time series from known
 // Ricker model parameters, for testing parameter recovery.
 func generateSyntheticData(
 	seed uint64,
 	T int,
-	trueParams []float64, // [r0, alpha, b1, b2, b3, sigma, obs_sd]
+	trueParams []float64, // [r0, alpha, b1, b2, b3, sigma, obs_var]
 ) *data.SiteData {
 	rng := rand.New(rand.NewPCG(seed, seed+1))
 
@@ -22,7 +23,7 @@ func generateSyntheticData(
 	alpha := trueParams[1]
 	betas := trueParams[2:5]
 	sigma := trueParams[5]
-	obsSd := trueParams[6]
+	obsSd := math.Sqrt(trueParams[6])
 
 	// Generate some covariates (standardised)
 	covariates := make([][]float64, T)
@@ -66,26 +67,105 @@ func generateSyntheticData(
 	}
 }
 
-func TestSMCRoundIteration_Harness(t *testing.T) {
+func TestSMCDecomposed_Harness(t *testing.T) {
 	t.Run(
-		"test that SMCRoundIteration runs with harnesses",
+		"test that decomposed SMC iterations run with harnesses",
 		func(t *testing.T) {
 			trueParams := []float64{
-				0.5, 2.0, 0.0, 0.0, 0.0, 0.15, 0.1,
+				0.5, 2.0, 0.0, 0.0, 0.0, 0.15, 0.01,
 			}
-			d := generateSyntheticData(123, 15, trueParams)
+			siteData := generateSyntheticData(123, 15, trueParams)
 
-			settings := simulator.LoadSettingsFromYaml(
-				"./smc_round_settings.yaml",
+			numParticles := 10
+			nParams := 7
+			numCov := siteData.NumCovariates
+			posteriorWidth := PosteriorStateWidth(nParams)
+			embeddedWidth := EmbeddedStateWidth(numParticles, numCov)
+			priorTypes, priorParams := EncodePriors(DefaultRickerPriors())
+
+			proposalInit := make([]float64, numParticles*nParams)
+			embeddedInit := make([]float64, embeddedWidth)
+			posteriorInit := make([]float64, posteriorWidth)
+			for j := range nParams {
+				posteriorInit[nParams+j*nParams+j] = 1.0
+			}
+
+			// Build inner sim
+			innerSettings, innerImpl := buildInnerSimulation(
+				siteData, numParticles,
 			)
 
-			smcIter := &SMCRoundIteration{
-				SiteData:   d,
-				Priors:     DefaultRickerPriors(),
-				ParamNames: DefaultSMCConfig().ParamNames,
+			// Build upstream wiring
+			embeddedUpstream := buildEmbeddedParamsFromUpstream(
+				numParticles, nParams,
+			)
+
+			// Loglike extraction indices
+			loglikeIndices := make([]int, numParticles)
+			for p := range numParticles {
+				loglikeIndices[p] = loglikeOutputOffset(p, numCov)
 			}
 
-			iterations := []simulator.Iteration{smcIter}
+			settings := &simulator.Settings{
+				Iterations: []simulator.IterationSettings{
+					{
+						Name: "smc_proposals",
+						Params: simulator.NewParams(map[string][]float64{
+							"verbose":            {0},
+							"num_particles":      {float64(numParticles)},
+							"prior_types":        priorTypes,
+							"prior_params":       priorParams,
+							"posterior_partition": {2},
+						}),
+						InitStateValues:   proposalInit,
+						StateWidth:        numParticles * nParams,
+						StateHistoryDepth: 2,
+						Seed:              42,
+					},
+					{
+						Name: "smc_sim",
+						Params: simulator.NewParams(map[string][]float64{
+							"init_time_value": {siteData.Years[0]},
+							"burn_in_steps":   {0},
+						}),
+						ParamsFromUpstream: embeddedUpstream,
+						InitStateValues:    embeddedInit,
+						StateWidth:         embeddedWidth,
+						StateHistoryDepth:  2,
+						Seed:               142,
+					},
+					{
+						Name: "smc_posterior",
+						Params: simulator.NewParams(map[string][]float64{
+							"verbose":           {0},
+							"num_particles":     {float64(numParticles)},
+							"num_params":        {float64(nParams)},
+							"particle_loglikes": make([]float64, numParticles),
+							"particle_params":   proposalInit,
+						}),
+						ParamsFromUpstream: map[string]simulator.UpstreamConfig{
+							"particle_loglikes": {Upstream: 1, Indices: loglikeIndices},
+							"particle_params":   {Upstream: 0},
+						},
+						InitStateValues:   posteriorInit,
+						StateWidth:        posteriorWidth,
+						StateHistoryDepth: 2,
+						Seed:              0,
+					},
+				},
+				InitTimeValue:         0.0,
+				TimestepsHistoryDepth: 2,
+			}
+			settings.Init()
+
+			paramNames := DefaultSMCConfig().ParamNames
+			iterations := []simulator.Iteration{
+				&SMCProposalIteration{Priors: DefaultRickerPriors()},
+				general.NewEmbeddedSimulationRunIteration(
+					innerSettings, innerImpl,
+				),
+				&SMCPosteriorIteration{ParamNames: paramNames},
+			}
 			implementations := &simulator.Implementations{
 				Iterations:      iterations,
 				OutputCondition: &simulator.EveryStepOutputCondition{},
@@ -103,7 +183,7 @@ func TestSMCRoundIteration_Harness(t *testing.T) {
 }
 
 func TestRunSMC_SyntheticRecovery(t *testing.T) {
-	// True parameters
+	// True parameters (obs_noise_var = 0.01, i.e. obs_sd = 0.1)
 	trueParams := []float64{
 		0.5,  // growth_rate
 		2.0,  // density_dependence
@@ -111,7 +191,7 @@ func TestRunSMC_SyntheticRecovery(t *testing.T) {
 		0.0,  // beta_temp
 		0.0,  // beta_do
 		0.15, // process_noise_sd
-		0.1,  // obs_noise_sd
+		0.01, // obs_noise_var
 	}
 
 	d := generateSyntheticData(123, 30, trueParams)
@@ -162,17 +242,6 @@ func TestRunSMC_SyntheticRecovery(t *testing.T) {
 		}
 	})
 
-	t.Run("predictions populated", func(t *testing.T) {
-		if len(result.Predictions) != len(d.Years) {
-			t.Errorf("expected %d prediction rows, got %d",
-				len(d.Years), len(result.Predictions))
-		}
-		if len(result.Predictions) > 0 && len(result.Predictions[0]) != config.NumParticles {
-			t.Errorf("expected %d particles per row, got %d",
-				config.NumParticles, len(result.Predictions[0]))
-		}
-	})
-
 	t.Run("posterior_std positive", func(t *testing.T) {
 		for i, s := range result.PosteriorStd {
 			if s <= 0 || math.IsNaN(s) {
@@ -180,6 +249,63 @@ func TestRunSMC_SyntheticRecovery(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestStateSliceIteration_Harness(t *testing.T) {
+	t.Run(
+		"test that StateSliceIteration runs with harnesses",
+		func(t *testing.T) {
+			settings := &simulator.Settings{
+				Iterations: []simulator.IterationSettings{
+					{
+						Name: "upstream",
+						Params: simulator.NewParams(map[string][]float64{
+							"param_values": {1.0, 2.0, 3.0, 4.0, 5.0},
+						}),
+						InitStateValues:   []float64{1.0, 2.0, 3.0, 4.0, 5.0},
+						StateWidth:        5,
+						StateHistoryDepth: 2,
+						Seed:              0,
+					},
+					{
+						Name: "slice",
+						Params: simulator.NewParams(map[string][]float64{
+							"offset":        {1},
+							"width":         {3},
+							"latest_values": {1.0, 2.0, 3.0, 4.0, 5.0},
+						}),
+						ParamsFromUpstream: map[string]simulator.UpstreamConfig{
+							"latest_values": {Upstream: 0},
+						},
+						InitStateValues:   []float64{2.0, 3.0, 4.0},
+						StateWidth:        3,
+						StateHistoryDepth: 1,
+						Seed:              0,
+					},
+				},
+				InitTimeValue:         0.0,
+				TimestepsHistoryDepth: 2,
+			}
+			settings.Init()
+
+			iterations := []simulator.Iteration{
+				&general.ParamValuesIteration{},
+				&StateSliceIteration{},
+			}
+			implementations := &simulator.Implementations{
+				Iterations:      iterations,
+				OutputCondition: &simulator.EveryStepOutputCondition{},
+				OutputFunction:  &simulator.NilOutputFunction{},
+				TerminationCondition: &simulator.NumberOfStepsTerminationCondition{
+					MaxNumberOfSteps: 3,
+				},
+				TimestepFunction: &simulator.ConstantTimestepFunction{Stepsize: 1.0},
+			}
+			if err := simulator.RunWithHarnesses(settings, implementations); err != nil {
+				t.Errorf("test harness failed: %v", err)
+			}
+		},
+	)
 }
 
 func TestLogSumExp(t *testing.T) {

@@ -13,14 +13,16 @@ pkg/data/          # Data access and preparation
   panel.go          # Data prep pipeline (BuildPanel, LoadSiteTimeSeries)
   hydrology.go      # EA Hydrology API client (flow stations, daily readings)
   water_quality.go  # EA Water Quality API client (temp, DO, ammonia, BOD)
-pkg/population/     # Stochastic population dynamics models (e.g. ricker.go)
+pkg/population/     # Stochastic population dynamics models
+  ricker.go          # Stochastic Ricker iteration (log-density space)
 pkg/inference/      # Bayesian inference
-  priors.go         # Prior distributions (Uniform, TruncatedNormal, HalfNormal, LogNormal)
-  smc.go            # SMC importance sampling using stochadex iterations
-cmd/smc/            # CLI: run SMC inference on a site
+  priors.go          # Prior distributions (Uniform, TruncatedNormal, HalfNormal, LogNormal)
+  smc.go             # SMC iterations + RunSMC() using EmbeddedSimulationRunIteration
+  synthetic.go       # GenerateSyntheticData for testing parameter recovery
 cmd/fit/            # CLI: random-search MLE (baseline)
 cmd/fetchcovariates/ # CLI: fetch EA flow/WQ data for panel sites
 cfg/                # Stochadex YAML configs
+  smc_inference.yaml # Reference config for SMC with embedded inner sim (N=2)
 nbs/                # GoNB Jupyter notebooks
   data_exploration.ipynb  # Data exploration and coverage analysis
 dat/                # Data files (gitignored, see below)
@@ -83,7 +85,63 @@ Both APIs: no auth required, spatial search by lat/long + radius (km), matched t
 - **Fish stocking records:** Not public — requires FOI request to EA.
 - **Policy/regulation timeline:** No machine-readable source — needs manual curation from legislation.gov.uk.
 
-## Next Steps (as of March 2025)
+## SMC Inference Architecture
+
+The SMC (Sequential Monte Carlo) inference uses the stochadex `EmbeddedSimulationRunIteration` to nest an inner particle-evaluation simulation inside an outer importance-sampling loop.
+
+### Outer simulation (3 partitions)
+
+| Partition | Iteration | State | Description |
+|-----------|-----------|-------|-------------|
+| `smc_proposals` | `SMCProposalIteration` | N×d flat | Draws particles from prior (round 1) or posterior proposal (subsequent rounds) |
+| `smc_sim` | `EmbeddedSimulationRunIteration` | concatenated inner states | Runs inner sim to evaluate all N particles through the data |
+| `smc_posterior` | `SMCPosteriorIteration` | mean(d) + cov(d²) + logZ(1) | Computes importance-weighted posterior statistics |
+
+### Inner simulation (2 + 2N partitions, wrapped by embedded sim)
+
+| Partition | Iteration | Description |
+|-----------|-----------|-------------|
+| `observed_data` | `FromStorageIteration` | Streams observed log-density data |
+| `covariates` | `FromStorageIteration` | Streams environmental covariates (flow, temp, DO) |
+| `ricker_p` (×N) | `RickerIteration` | Stochastic Ricker dynamics for particle p |
+| `loglike_p` (×N) | `DataComparisonIteration` | Cumulative log-likelihood for particle p |
+
+### Parameter forwarding
+
+Particle parameters are forwarded from the outer proposal to inner partitions via **indexed `params_from_upstream`** on the embedded sim partition. Each particle p's 7 parameters (at flat offset p×7) are routed to the corresponding `ricker_p` and `loglike_p` partitions:
+
+- `ricker_p/growth_rate` ← proposal[p×7 + 0]
+- `ricker_p/density_dependence` ← proposal[p×7 + 1]
+- `ricker_p/covariate_coefficients` ← proposal[p×7 + 2..4]
+- `ricker_p/process_noise_sd` ← proposal[p×7 + 5]
+- `loglike_p/variance` ← proposal[p×7 + 6] (obs_noise_var)
+
+Log-likelihoods are extracted from the embedded output via indexed upstream on the posterior partition.
+
+### Key functions
+
+- `RunSMC(siteData, config)` — programmatic entry point, builds everything and returns `*SMCResult`
+- `buildInnerSimulation(siteData, N)` — constructs inner sim settings/implementations
+- `buildEmbeddedParamsFromUpstream(N, nParams)` — generates indexed upstream wiring
+- `NewNormalDataComparison()` — helper to construct `DataComparisonIteration` without import alias conflicts
+
+### YAML config
+
+`cfg/smc_inference.yaml` is a reference config using the stochadex `embedded` field. The `smc_sim` main partition has no `iteration` — it's matched by name to the `embedded` run, which the API automatically wraps with `EmbeddedSimulationRunIteration`. Uses N=2 for readability; use `RunSMC()` for larger N.
+
+### Model parameters (d=7)
+
+| Index | Name | Prior | Description |
+|-------|------|-------|-------------|
+| 0 | `growth_rate` | TruncNorm(0.5, 1.0, -2, 5) | Baseline intrinsic growth rate |
+| 1 | `density_dependence` | LogNorm(0.5, 1.5) | Strength of density-dependent mortality |
+| 2 | `beta_flow` | TruncNorm(0, 0.3, -2, 2) | River flow covariate effect |
+| 3 | `beta_temp` | TruncNorm(0, 0.3, -2, 2) | Water temperature covariate effect |
+| 4 | `beta_do` | TruncNorm(0, 0.3, -2, 2) | Dissolved oxygen covariate effect |
+| 5 | `process_noise_sd` | HalfNorm(0.5) | Process noise standard deviation |
+| 6 | `obs_noise_var` | LogNorm(-1.5, 1.0) | Observation noise variance |
+
+## Progress (as of March 2026)
 
 1. ✅ Data downloaded and explored
 2. ✅ Coverage analysis complete
@@ -92,10 +150,11 @@ Both APIs: no auth required, spatial search by lat/long + radius (km), matched t
 5. ✅ EA Water Quality API client built (temp, DO, ammonia, BOD)
 6. ✅ Flow + WQ data fetched and cached, joined to panel (cmd/fetchcovariates)
 7. ✅ Stochastic Ricker population model (pkg/population/ricker.go)
-8. ✅ SMC Bayesian inference using stochadex iterations (pkg/inference/smc.go, cmd/smc)
-9. Next: Multi-site batch fitting, hierarchical model across sites
-10. Next: Model validation — held-out prediction, residual diagnostics
-11. Next: Policy simulation scenarios with fitted model
+8. ✅ SMC Bayesian inference using EmbeddedSimulationRunIteration (pkg/inference/smc.go)
+9. ✅ YAML config updated to use stochadex `embedded` field (cfg/smc_inference.yaml)
+10. Next: Multi-site batch fitting, hierarchical model across sites
+11. Next: Model validation — held-out prediction, residual diagnostics
+12. Next: Policy simulation scenarios with fitted model
 
 ---
 
@@ -136,6 +195,7 @@ main:
     params_from_upstream:           # wire upstream partition output → this partition's params
       latest_values:
         upstream: other_partition   # name of the upstream partition
+        indices: [0, 1]            # optional: extract specific indices from upstream state
     params_as_partitions:           # reference partition names as param values (resolved to indices)
       data_partition: [some_partition]
     init_state_values: [0.0, 0.0]  # initial state (determines state_width)
@@ -146,10 +206,39 @@ main:
     extra_vars:                     # Go variable declarations
     - myVar: "&continuous.WienerProcessIteration{}"
 
+  # A partition with no iteration field is matched by name to an embedded run.
+  - name: my_embedded_sim
+    params:
+      init_time_value: [0.0]
+      burn_in_steps: [0]
+    params_from_upstream:
+      inner_partition/param_name:   # "<innerPartition>/<paramName>" syntax
+        upstream: source_partition  # forwards values to inner partition's params
+        indices: [0]               # optional index selection
+
   simulation:
     output_condition: "&simulator.EveryStepOutputCondition{}"
     output_function: "&simulator.StdoutOutputFunction{}"
     termination_condition: "&simulator.NumberOfStepsTerminationCondition{MaxNumberOfSteps: 100}"
+    timestep_function: "&simulator.ConstantTimestepFunction{Stepsize: 1.0}"
+    init_time_value: 0.0
+
+# Embedded simulation runs — matched to main partitions by name.
+# The API wraps each with EmbeddedSimulationRunIteration automatically.
+# Output state is the concatenation of all inner partition final states.
+embedded:
+- name: my_embedded_sim
+  partitions:
+  - name: inner_partition
+    iteration: innerIter
+    params: {}
+    init_state_values: [0.0]
+    state_history_depth: 2
+    seed: 1
+  simulation:
+    output_condition: "&simulator.NilOutputCondition{}"
+    output_function: "&simulator.NilOutputFunction{}"
+    termination_condition: "&simulator.NumberOfStepsTerminationCondition{MaxNumberOfSteps: 10}"
     timestep_function: "&simulator.ConstantTimestepFunction{Stepsize: 1.0}"
     init_time_value: 0.0
 ```

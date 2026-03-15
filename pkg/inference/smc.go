@@ -46,7 +46,7 @@ func DefaultSMCConfig() SMCConfig {
 		ParamNames: []string{
 			"growth_rate", "density_dependence",
 			"beta_flow", "beta_temp", "beta_do",
-			"process_noise_sd", "obs_noise_sd",
+			"process_noise_sd", "obs_noise_var",
 		},
 	}
 }
@@ -122,40 +122,91 @@ func EncodePriors(priors []Prior) (priorTypes, priorParams []float64) {
 	return
 }
 
-// SMCRoundIteration implements simulator.Iteration where each step
-// corresponds to one SMC importance sampling round. At each step it:
-//  1. Generates particle proposals (prior on step 0, MVN from previous
-//     posterior on subsequent steps)
-//  2. Builds and runs an embedded inner simulation evaluating all
-//     particles through the data
-//  3. Computes the posterior and returns it as state
-//
-// State layout: [posterior_mean(d) | posterior_cov(d²) | log_marginal_lik(1)]
-// State width: d + d² + 1
-//
-// Configuration can be set either programmatically (struct fields) or
-// via params for the stochadex YAML API:
-//
-//	Params:
-//	  num_particles:  [200]
-//	  prior_types:    [1, 3, 1, 1, 1, 2, 2]       (type codes per param)
-//	  prior_params:   [mu, sigma, lo, hi, ...]     (4 values per prior)
-//	  verbose:        [0]                          (optional, 1 to enable)
-//
-// SiteData must be set on the struct (e.g. via extra_vars in YAML).
-type SMCRoundIteration struct {
-	SiteData   *data.SiteData
-	Priors     []Prior
-	ParamNames []string
-
-	rng          *rand.Rand
-	numParticles int
-	nParams      int
-	verbose      bool
-	lastResult   *SMCResult // detailed result from the most recent round
+// NewNormalDataComparison returns a DataComparisonIteration with a
+// NormalLikelihoodDistribution. This helper avoids import-alias conflicts
+// when stochadex/pkg/inference and anglersim/pkg/inference are both needed
+// (e.g. in the YAML code-generation path).
+func NewNormalDataComparison() simulator.Iteration {
+	return &stdinf.DataComparisonIteration{
+		Likelihood: &stdinf.NormalLikelihoodDistribution{},
+	}
 }
 
-func (s *SMCRoundIteration) Configure(
+// StateSliceIteration extracts a contiguous slice from an upstream
+// partition's state, copying the values to avoid mutation of the
+// received data. Use via params_from_upstream to receive the full
+// upstream state as "latest_values", with "offset" and "width"
+// specifying the slice bounds.
+type StateSliceIteration struct{}
+
+func (s *StateSliceIteration) Configure(
+	partitionIndex int,
+	settings *simulator.Settings,
+) {
+}
+
+func (s *StateSliceIteration) Iterate(
+	params *simulator.Params,
+	partitionIndex int,
+	stateHistories []*simulator.StateHistory,
+	timestepsHistory *simulator.CumulativeTimestepsHistory,
+) []float64 {
+	values := params.Get("latest_values")
+	offset := int(params.GetIndex("offset", 0))
+	width := int(params.GetIndex("width", 0))
+	result := make([]float64, width)
+	copy(result, values[offset:offset+width])
+	return result
+}
+
+// ---------------------------------------------------------------------------
+// SMC decomposed iterations
+//
+// The SMC inference is decomposed into three outer partitions:
+//
+//   [0] SMCProposalIteration            — generates N particle proposals
+//   [1] EmbeddedSimulationRunIteration  — evaluates particles via inner sim
+//   [2] SMCPosteriorIteration           — computes importance-weighted posterior
+//
+// The inner simulation (wrapped by the embedded iteration) contains:
+//
+//   [0]      observed_data  (FromStorageIteration)
+//   [1]      covariates     (FromStorageIteration)
+//   [2+2p]   ricker_p       (RickerIteration)
+//   [2+2p+1] loglike_p      (DataComparisonIteration)
+//
+// Particle parameters are forwarded from the proposal partition to
+// inner ricker/loglike partitions via indexed params_from_upstream.
+// Channel dependencies: proposals → embedded_sim → posterior.
+// Proposal feedback reads smc_posterior's state history (one-step lag).
+// ---------------------------------------------------------------------------
+
+// SMCProposalIteration generates N particle proposals at each step.
+// On step 0 it draws from the prior. On subsequent steps it draws
+// from a multivariate normal centred on the previous posterior,
+// read from the smc_posterior partition's state history.
+//
+// State layout: [particle_params(N*d)] flattened row-major.
+// State width: N*d.
+//
+// Params:
+//
+//	num_particles:      [N]
+//	prior_types:        [type codes]
+//	prior_params:       [4 values per prior]
+//	posterior_partition: [partition_index] (via params_as_partitions)
+//	verbose:            [0 or 1]
+type SMCProposalIteration struct {
+	Priors []Prior
+
+	rng                  *rand.Rand
+	numParticles         int
+	nParams              int
+	posteriorPartitionIdx int
+	verbose              bool
+}
+
+func (s *SMCProposalIteration) Configure(
 	partitionIndex int,
 	settings *simulator.Settings,
 ) {
@@ -163,30 +214,99 @@ func (s *SMCRoundIteration) Configure(
 	seed := settings.Iterations[partitionIndex].Seed
 	s.rng = rand.New(rand.NewPCG(seed, seed+1))
 	s.verbose = iterParams.GetIndex("verbose", 0) > 0
-
-	// NumParticles: from params or struct field
-	if np, ok := iterParams.GetOk("num_particles"); ok {
-		s.numParticles = int(np[0])
-	}
+	s.numParticles = int(iterParams.GetIndex("num_particles", 0))
 	if s.numParticles == 0 {
-		panic("SMCRoundIteration: num_particles must be set " +
-			"(via params or struct field)")
+		panic("SMCProposalIteration: num_particles must be set")
 	}
-
-	// Priors: from params or struct field
 	if s.Priors == nil {
 		priorTypes, ok1 := iterParams.GetOk("prior_types")
 		priorParams, ok2 := iterParams.GetOk("prior_params")
 		if ok1 && ok2 {
 			s.Priors = DecodePriors(priorTypes, priorParams)
 		} else {
-			panic("SMCRoundIteration: priors must be set " +
-				"(via params prior_types/prior_params or struct field)")
+			panic("SMCProposalIteration: priors must be set")
 		}
 	}
 	s.nParams = len(s.Priors)
+	s.posteriorPartitionIdx = int(iterParams.GetIndex("posterior_partition", 0))
+}
 
-	// ParamNames: auto-generate if not set
+func (s *SMCProposalIteration) Iterate(
+	params *simulator.Params,
+	partitionIndex int,
+	stateHistories []*simulator.StateHistory,
+	timestepsHistory *simulator.CumulativeTimestepsHistory,
+) []float64 {
+	round := timestepsHistory.CurrentStepNumber
+	N := s.numParticles
+	d := s.nParams
+
+	particleParams := make([][]float64, N)
+	if round == 1 {
+		for p := range N {
+			pp := make([]float64, d)
+			for j, prior := range s.Priors {
+				pp[j] = prior.Sample(s.rng)
+			}
+			particleParams[p] = pp
+		}
+	} else {
+		// Read posterior from previous step's state history
+		prevPosterior := stateHistories[s.posteriorPartitionIdx].Values.RawRowView(0)
+		proposalMean := prevPosterior[:d]
+		proposalCov := regulariseCov(
+			prevPosterior[d:d+d*d], d, s.Priors,
+		)
+		particleParams = sampleMultivariateNormal(
+			s.rng, N, proposalMean, proposalCov, s.Priors,
+		)
+	}
+
+	if s.verbose {
+		fmt.Printf("Round %d: drawing %d particles...\n", round, N)
+	}
+
+	// Pack flat: [p0_param0, p0_param1, ..., pN_paramD]
+	state := make([]float64, N*d)
+	for p := range N {
+		copy(state[p*d:(p+1)*d], particleParams[p])
+	}
+	return state
+}
+
+// SMCPosteriorIteration computes importance-weighted posterior
+// statistics from particle log-likelihoods and parameters received
+// via params_from_upstream channels.
+//
+// State layout: [posterior_mean(d) | posterior_cov(d²) | log_marginal_lik(1)]
+// State width: d + d² + 1.
+//
+// Params:
+//
+//	num_particles:    [N]
+//	num_params:       [d]
+//	particle_loglikes: [N values] (via params_from_upstream)
+//	particle_params:   [N*d flat] (via params_from_upstream)
+//	verbose:           [0 or 1]
+type SMCPosteriorIteration struct {
+	ParamNames []string
+
+	numParticles int
+	nParams      int
+	verbose      bool
+}
+
+func (s *SMCPosteriorIteration) Configure(
+	partitionIndex int,
+	settings *simulator.Settings,
+) {
+	iterParams := settings.Iterations[partitionIndex].Params
+	s.numParticles = int(iterParams.GetIndex("num_particles", 0))
+	s.nParams = int(iterParams.GetIndex("num_params", 0))
+	s.verbose = iterParams.GetIndex("verbose", 0) > 0
+	if s.numParticles == 0 || s.nParams == 0 {
+		panic("SMCPosteriorIteration: num_particles and num_params must be set")
+	}
 	if len(s.ParamNames) == 0 {
 		s.ParamNames = make([]string, s.nParams)
 		for i := range s.nParams {
@@ -195,91 +315,26 @@ func (s *SMCRoundIteration) Configure(
 	}
 }
 
-func (s *SMCRoundIteration) Iterate(
+func (s *SMCPosteriorIteration) Iterate(
 	params *simulator.Params,
 	partitionIndex int,
 	stateHistories []*simulator.StateHistory,
 	timestepsHistory *simulator.CumulativeTimestepsHistory,
 ) []float64 {
-	round := timestepsHistory.CurrentStepNumber
+	N := s.numParticles
 	d := s.nParams
 
-	// Generate particle proposals
-	particleParams := make([][]float64, s.numParticles)
-	if round == 0 {
-		// First round: draw from prior
-		for p := range s.numParticles {
-			pp := make([]float64, d)
-			for j, prior := range s.Priors {
-				pp[j] = prior.Sample(s.rng)
-			}
-			particleParams[p] = pp
-		}
-	} else {
-		// Subsequent rounds: draw from MVN using previous posterior
-		prevState := stateHistories[partitionIndex].Values.RawRowView(0)
-		proposalMean := prevState[:d]
-		proposalCov := regulariseCov(prevState[d:d+d*d], d, s.Priors)
-		particleParams = sampleMultivariateNormal(
-			s.rng, s.numParticles, proposalMean, proposalCov, s.Priors,
-		)
+	logLiks := params.Get("particle_loglikes")
+	proposalFlat := params.Get("particle_params")
+
+	// Unflatten params
+	particleParams := make([][]float64, N)
+	for p := range N {
+		particleParams[p] = make([]float64, d)
+		copy(particleParams[p], proposalFlat[p*d:(p+1)*d])
 	}
 
-	if s.verbose {
-		fmt.Printf("Round %d: running %d particles...\n",
-			round+1, s.numParticles)
-	}
-
-	// Build and run the inner (embedded) simulation
-	settings, implementations, store := buildSMCSimulation(
-		s.SiteData, particleParams,
-	)
-	func() {
-		defer func() { recover() }()
-		coordinator := simulator.NewPartitionCoordinator(
-			settings, implementations,
-		)
-		coordinator.Run()
-	}()
-
-	// Extract results from the inner simulation
-	logLiks := make([]float64, s.numParticles)
-	for p := range s.numParticles {
-		name := fmt.Sprintf("loglike_%d", p)
-		vals := store.GetValues(name)
-		if len(vals) == 0 {
-			logLiks[p] = math.Inf(-1)
-		} else {
-			logLiks[p] = vals[len(vals)-1][0]
-			if math.IsNaN(logLiks[p]) {
-				logLiks[p] = math.Inf(-1)
-			}
-		}
-	}
-
-	T := len(s.SiteData.Years)
-	predictions := make([][]float64, T)
-	for t := range T {
-		predictions[t] = make([]float64, s.numParticles)
-	}
-	for p := range s.numParticles {
-		name := fmt.Sprintf("ricker_%d", p)
-		vals := store.GetValues(name)
-		predictions[0][p] = s.SiteData.LogDensity[0][0]
-		for t := range len(vals) {
-			if t+1 < T {
-				predictions[t+1][p] = vals[t][0]
-			}
-		}
-	}
-
-	// Compute posterior
-	result := computePosterior(
-		s.ParamNames, particleParams, logLiks, predictions,
-	)
-	result.ParticleParams = particleParams
-	result.ParticleLogLik = logLiks
-	s.lastResult = result
+	result := computePosterior(s.ParamNames, particleParams, logLiks, nil)
 
 	if s.verbose {
 		fmt.Printf("  Log marginal likelihood: %.4f\n", result.LogMarginalLik)
@@ -289,7 +344,7 @@ func (s *SMCRoundIteration) Iterate(
 		}
 	}
 
-	// Pack state: [posterior_mean | posterior_cov | log_marginal_lik]
+	// Pack state: [mean(d) | cov(d²) | log_marginal_lik(1)]
 	state := make([]float64, d+d*d+1)
 	copy(state[:d], result.PosteriorMean)
 	copy(state[d:d+d*d], result.PosteriorCov)
@@ -297,115 +352,54 @@ func (s *SMCRoundIteration) Iterate(
 	return state
 }
 
-// LastResult returns the detailed SMCResult from the most recent round.
-func (s *SMCRoundIteration) LastResult() *SMCResult {
-	return s.lastResult
+// PosteriorStateWidth returns the state width for SMCPosteriorIteration.
+func PosteriorStateWidth(nParams int) int {
+	return nParams + nParams*nParams + 1
 }
 
-// RunSMC runs iterated importance sampling for the Ricker model as a
-// stochadex simulation. Each simulation step corresponds to one SMC round:
-// drawing parameter proposals, running the full particle evaluation via
-// an embedded inner simulation, and computing the posterior.
-func RunSMC(d *data.SiteData, config SMCConfig) *SMCResult {
-	nParams := len(config.Priors)
-	stateWidth := nParams + nParams*nParams + 1
-
-	// Initial state: zero mean, identity cov, zero log-marginal-lik
-	initState := make([]float64, stateWidth)
-	for j := range nParams {
-		initState[nParams+j*nParams+j] = 1.0
-	}
-
-	smcIter := &SMCRoundIteration{
-		SiteData:   d,
-		Priors:     config.Priors,
-		ParamNames: config.ParamNames,
-	}
-
-	verboseFlag := 0.0
-	if config.Verbose {
-		verboseFlag = 1.0
-	}
-
-	priorTypes, priorParams := EncodePriors(config.Priors)
-
-	settings := &simulator.Settings{
-		Iterations: []simulator.IterationSettings{
-			{
-				Name: "smc_round",
-				Params: simulator.NewParams(map[string][]float64{
-					"verbose":       {verboseFlag},
-					"num_particles": {float64(config.NumParticles)},
-					"prior_types":   priorTypes,
-					"prior_params":  priorParams,
-				}),
-				InitStateValues:   initState,
-				StateWidth:        stateWidth,
-				StateHistoryDepth: 2,
-				Seed:              config.Seed,
-			},
-		},
-		InitTimeValue:         0.0,
-		TimestepsHistoryDepth: 2,
-	}
-	settings.Init()
-
-	smcIter.Configure(0, settings)
-
-	implementations := &simulator.Implementations{
-		Iterations:      []simulator.Iteration{smcIter},
-		OutputCondition: &simulator.EveryStepOutputCondition{},
-		OutputFunction:  &simulator.NilOutputFunction{},
-		TerminationCondition: &simulator.NumberOfStepsTerminationCondition{
-			MaxNumberOfSteps: config.NumRounds,
-		},
-		TimestepFunction: &simulator.ConstantTimestepFunction{Stepsize: 1.0},
-	}
-
-	func() {
-		defer func() { recover() }()
-		coordinator := simulator.NewPartitionCoordinator(
-			settings, implementations,
-		)
-		coordinator.Run()
-	}()
-
-	return smcIter.LastResult()
+// EmbeddedStateWidth returns the state width for the embedded inner
+// simulation's concatenated output.
+func EmbeddedStateWidth(numParticles, numCovariates int) int {
+	return 1 + numCovariates + 2*numParticles
 }
 
-// Partition index helpers for the inner simulation layout:
+// innerRickerIdx returns the partition index of particle p's ricker
+// iteration in the inner simulation.
+func innerRickerIdx(p int) int { return 2 + 2*p }
+
+// innerLoglikeIdx returns the partition index of particle p's loglike
+// iteration in the inner simulation.
+func innerLoglikeIdx(p int) int { return 2 + 2*p + 1 }
+
+// loglikeOutputOffset returns the offset of particle p's loglike value
+// in the embedded simulation's concatenated output state.
+func loglikeOutputOffset(p, numCovariates int) int {
+	return 1 + numCovariates + 2*p + 1
+}
+
+// buildInnerSimulation constructs the inner stochadex simulation
+// settings and implementations for N parallel particle evaluations.
+// The inner simulation is designed to be wrapped by
+// EmbeddedSimulationRunIteration, which forwards particle parameters
+// from the outer proposal partition via indexed params_from_upstream.
 //
-//	[0]            observed_data  (FromStorageIteration)
-//	[1]            covariates     (FromStorageIteration)
-//	[2+3p]         params_p       (ParamValuesIteration)
-//	[2+3p+1]       ricker_p       (RickerIteration)
-//	[2+3p+2]       loglike_p      (DataComparisonIteration)
-//	[2+3N]         log_norm       (PosteriorLogNormalisationIteration)
-//	[2+3N+1]       posterior_mean (PosteriorMeanIteration)
-//	[2+3N+2]       posterior_cov  (PosteriorCovarianceIteration)
-func paramsIdx(p int) int  { return 2 + 3*p }
-func rickerIdx(p int) int  { return 2 + 3*p + 1 }
-func loglikeIdx(p int) int { return 2 + 3*p + 2 }
-func logNormIdx(n int) int { return 2 + 3*n }
-func postMeanIdx(n int) int { return 2 + 3*n + 1 }
-func postCovIdx(n int) int  { return 2 + 3*n + 2 }
-
-// buildSMCSimulation constructs the inner stochadex simulation with N
-// parallel particle evaluation pipelines plus posterior aggregation
-// partitions.
-func buildSMCSimulation(
+// Inner partition layout:
+//
+//	[0]      observed_data  (FromStorageIteration)
+//	[1]      covariates     (FromStorageIteration)
+//	[2+2p]   ricker_p       (RickerIteration)
+//	[2+2p+1] loglike_p      (DataComparisonIteration)
+func buildInnerSimulation(
 	d *data.SiteData,
-	particleParams [][]float64,
-) (*simulator.Settings, *simulator.Implementations, *simulator.StateTimeStorage) {
-	N := len(particleParams)
-	nParams := len(particleParams[0])
+	N int,
+) (*simulator.Settings, *simulator.Implementations) {
 	T := len(d.Years)
-	totalPartitions := 3*N + 5 // 2 data + 3N particles + 3 posterior
+	totalPartitions := 2 + 2*N
 
 	iterSettings := make([]simulator.IterationSettings, totalPartitions)
 	iterations := make([]simulator.Iteration, totalPartitions)
 
-	// [0] observed_data — streams log-density observations
+	// [0] observed_data
 	iterSettings[0] = simulator.IterationSettings{
 		Name:              "observed_data",
 		Params:            simulator.NewParams(map[string][]float64{}),
@@ -416,7 +410,7 @@ func buildSMCSimulation(
 	}
 	iterations[0] = &general.FromStorageIteration{Data: d.LogDensity}
 
-	// [1] covariates — streams environmental covariates
+	// [1] covariates
 	iterSettings[1] = simulator.IterationSettings{
 		Name:              "covariates",
 		Params:            simulator.NewParams(map[string][]float64{}),
@@ -427,41 +421,19 @@ func buildSMCSimulation(
 	}
 	iterations[1] = &general.FromStorageIteration{Data: d.Covariates}
 
-	// Per-particle partitions
-	paramPartitionIndices := make([]float64, N)
-	loglikePartitionIndices := make([]float64, N)
-
 	for p := range N {
-		pp := particleParams[p]
-		pi := paramsIdx(p)
-		ri := rickerIdx(p)
-		li := loglikeIdx(p)
+		ri := innerRickerIdx(p)
+		li := innerLoglikeIdx(p)
 
-		paramPartitionIndices[p] = float64(pi)
-		loglikePartitionIndices[p] = float64(li)
-
-		// params_p — holds the 7 parameter values as state
-		iterSettings[pi] = simulator.IterationSettings{
-			Name: fmt.Sprintf("params_%d", p),
-			Params: simulator.NewParams(map[string][]float64{
-				"param_values": pp,
-			}),
-			InitStateValues:   pp,
-			StateWidth:        nParams,
-			StateHistoryDepth: 2,
-			Seed:              0,
-		}
-		iterations[pi] = &general.ParamValuesIteration{}
-
-		// ricker_p — population dynamics with this particle's parameters
+		// ricker_p — params forwarded from embedded sim each step
 		iterSettings[ri] = simulator.IterationSettings{
 			Name: fmt.Sprintf("ricker_%d", p),
 			Params: simulator.NewParams(map[string][]float64{
-				"growth_rate":            {pp[0]},
-				"density_dependence":     {pp[1]},
-				"covariate_coefficients": {pp[2], pp[3], pp[4]},
+				"growth_rate":            {0},
+				"density_dependence":     {0},
+				"covariate_coefficients": {0, 0, 0},
 				"covariates":             d.Covariates[0],
-				"process_noise_sd":       {pp[5]},
+				"process_noise_sd":       {0},
 			}),
 			ParamsFromUpstream: map[string]simulator.UpstreamConfig{
 				"covariates": {Upstream: 1},
@@ -473,13 +445,12 @@ func buildSMCSimulation(
 		}
 		iterations[ri] = &population.RickerIteration{}
 
-		// loglike_p — cumulative log-likelihood comparing Ricker to observed
-		obsSD := pp[6]
+		// loglike_p — variance forwarded from embedded sim each step
 		iterSettings[li] = simulator.IterationSettings{
 			Name: fmt.Sprintf("loglike_%d", p),
 			Params: simulator.NewParams(map[string][]float64{
 				"mean":               d.LogDensity[0],
-				"variance":           {obsSD * obsSD},
+				"variance":           {1.0}, // placeholder, forwarded
 				"latest_data_values": d.LogDensity[0],
 				"cumulative":         {1},
 				"burn_in_steps":      {0},
@@ -498,79 +469,6 @@ func buildSMCSimulation(
 		}
 	}
 
-	// Posterior aggregation partitions
-	lnIdx := logNormIdx(N)
-	pmIdx := postMeanIdx(N)
-	pcIdx := postCovIdx(N)
-
-	// [2+3N] log_norm — normalisation across particle log-likelihoods
-	iterSettings[lnIdx] = simulator.IterationSettings{
-		Name: "log_norm",
-		Params: simulator.NewParams(map[string][]float64{
-			"loglike_partitions":      loglikePartitionIndices,
-			"past_discounting_factor": {0.001}, // effectively use only current step
-		}),
-		InitStateValues:   []float64{0.0},
-		StateWidth:        1,
-		StateHistoryDepth: 2,
-		Seed:              0,
-	}
-	iterations[lnIdx] = &stdinf.PosteriorLogNormalisationIteration{}
-
-	// [2+3N+1] posterior_mean — importance-weighted mean of parameters
-	initMean := make([]float64, nParams)
-	for p := range N {
-		for j := range nParams {
-			initMean[j] += particleParams[p][j]
-		}
-	}
-	for j := range nParams {
-		initMean[j] /= float64(N)
-	}
-
-	iterSettings[pmIdx] = simulator.IterationSettings{
-		Name: "posterior_mean",
-		Params: simulator.NewParams(map[string][]float64{
-			"param_partitions":   paramPartitionIndices,
-			"loglike_partitions": loglikePartitionIndices,
-		}),
-		ParamsFromUpstream: map[string]simulator.UpstreamConfig{
-			"posterior_log_normalisation": {Upstream: lnIdx},
-		},
-		InitStateValues:   initMean,
-		StateWidth:        nParams,
-		StateHistoryDepth: 2,
-		Seed:              0,
-	}
-	iterations[pmIdx] = &stdinf.PosteriorMeanIteration{
-		Transform: stdinf.MeanTransform,
-	}
-
-	// [2+3N+2] posterior_cov — importance-weighted covariance
-	initCov := make([]float64, nParams*nParams)
-	for j := range nParams {
-		initCov[j*nParams+j] = 1.0 // identity matrix
-	}
-
-	iterSettings[pcIdx] = simulator.IterationSettings{
-		Name: "posterior_cov",
-		Params: simulator.NewParams(map[string][]float64{
-			"param_partitions":   paramPartitionIndices,
-			"loglike_partitions": loglikePartitionIndices,
-			"mean":               initMean,
-		}),
-		ParamsFromUpstream: map[string]simulator.UpstreamConfig{
-			"posterior_log_normalisation": {Upstream: lnIdx},
-			"mean":                        {Upstream: pmIdx},
-		},
-		InitStateValues:   initCov,
-		StateWidth:        nParams * nParams,
-		StateHistoryDepth: 2,
-		Seed:              0,
-	}
-	iterations[pcIdx] = &stdinf.PosteriorCovarianceIteration{}
-
-	// Build Settings
 	settings := &simulator.Settings{
 		Iterations:            iterSettings,
 		InitTimeValue:         d.Years[0],
@@ -578,7 +476,173 @@ func buildSMCSimulation(
 	}
 	settings.Init()
 
-	// Configure all iterations
+	implementations := &simulator.Implementations{
+		Iterations:      iterations,
+		OutputCondition: &simulator.NilOutputCondition{},
+		OutputFunction:  &simulator.NilOutputFunction{},
+		TerminationCondition: &simulator.NumberOfStepsTerminationCondition{
+			MaxNumberOfSteps: T - 1,
+		},
+		TimestepFunction: &general.FromStorageTimestepFunction{
+			Data: d.Years,
+		},
+	}
+
+	return settings, implementations
+}
+
+// buildEmbeddedParamsFromUpstream constructs the params_from_upstream
+// map for the embedded simulation partition. Each particle's ricker
+// and loglike parameters are routed from the proposal partition [0]
+// using indexed upstream configs.
+//
+// Ricker params (per particle p, d params starting at p*d):
+//
+//	ricker_p/growth_rate            ← [p*d + 0]
+//	ricker_p/density_dependence     ← [p*d + 1]
+//	ricker_p/covariate_coefficients ← [p*d + 2, p*d + 3, p*d + 4]
+//	ricker_p/process_noise_sd       ← [p*d + 5]
+//
+// Loglike params:
+//
+//	loglike_p/variance              ← [p*d + 6]
+func buildEmbeddedParamsFromUpstream(
+	N, nParams int,
+) map[string]simulator.UpstreamConfig {
+	upstream := make(map[string]simulator.UpstreamConfig)
+	for p := range N {
+		base := p * nParams
+		upstream[fmt.Sprintf("ricker_%d/growth_rate", p)] = simulator.UpstreamConfig{
+			Upstream: 0, Indices: []int{base + 0},
+		}
+		upstream[fmt.Sprintf("ricker_%d/density_dependence", p)] = simulator.UpstreamConfig{
+			Upstream: 0, Indices: []int{base + 1},
+		}
+		upstream[fmt.Sprintf("ricker_%d/covariate_coefficients", p)] = simulator.UpstreamConfig{
+			Upstream: 0, Indices: []int{base + 2, base + 3, base + 4},
+		}
+		upstream[fmt.Sprintf("ricker_%d/process_noise_sd", p)] = simulator.UpstreamConfig{
+			Upstream: 0, Indices: []int{base + 5},
+		}
+		upstream[fmt.Sprintf("loglike_%d/variance", p)] = simulator.UpstreamConfig{
+			Upstream: 0, Indices: []int{base + 6},
+		}
+	}
+	return upstream
+}
+
+// RunSMC runs iterated importance sampling for the Ricker model as a
+// stochadex simulation. The outer simulation has three partitions:
+//
+//	[0] smc_proposals  (SMCProposalIteration)
+//	[1] smc_sim        (EmbeddedSimulationRunIteration wrapping inner sim)
+//	[2] smc_posterior   (SMCPosteriorIteration)
+//
+// The inner simulation evaluates all N particles through the data.
+// Particle parameters are forwarded from proposals to the inner sim
+// via indexed params_from_upstream on the embedded partition.
+//
+// Channel deps: proposals → embedded_sim → posterior.
+// Proposal feedback reads smc_posterior's state history (one-step lag).
+func RunSMC(d *data.SiteData, config SMCConfig) *SMCResult {
+	N := config.NumParticles
+	nParams := len(config.Priors)
+	numCov := d.NumCovariates
+	posteriorWidth := PosteriorStateWidth(nParams)
+	embeddedWidth := EmbeddedStateWidth(N, numCov)
+
+	verboseFlag := 0.0
+	if config.Verbose {
+		verboseFlag = 1.0
+	}
+	priorTypes, priorParams := EncodePriors(config.Priors)
+
+	// Init states
+	proposalInit := make([]float64, N*nParams)
+	embeddedInit := make([]float64, embeddedWidth)
+	posteriorInit := make([]float64, posteriorWidth)
+	for j := range nParams {
+		posteriorInit[nParams+j*nParams+j] = 1.0
+	}
+
+	// Build inner simulation
+	innerSettings, innerImpl := buildInnerSimulation(d, N)
+
+	// Build indexed upstream wiring for embedded sim
+	embeddedUpstream := buildEmbeddedParamsFromUpstream(N, nParams)
+
+	// Build loglike extraction indices for posterior
+	loglikeIndices := make([]int, N)
+	for p := range N {
+		loglikeIndices[p] = loglikeOutputOffset(p, numCov)
+	}
+
+	// Embedded sim params
+	embeddedParams := map[string][]float64{
+		"init_time_value": {d.Years[0]},
+		"burn_in_steps":   {0},
+	}
+
+	iterSettings := []simulator.IterationSettings{
+		// [0] smc_proposals
+		{
+			Name: "smc_proposals",
+			Params: simulator.NewParams(map[string][]float64{
+				"verbose":            {verboseFlag},
+				"num_particles":      {float64(N)},
+				"prior_types":        priorTypes,
+				"prior_params":       priorParams,
+				"posterior_partition": {2},
+			}),
+			InitStateValues:   proposalInit,
+			StateWidth:        N * nParams,
+			StateHistoryDepth: 2,
+			Seed:              config.Seed,
+		},
+		// [1] smc_sim (EmbeddedSimulationRunIteration)
+		{
+			Name:               "smc_sim",
+			Params:             simulator.NewParams(embeddedParams),
+			ParamsFromUpstream: embeddedUpstream,
+			InitStateValues:    embeddedInit,
+			StateWidth:         embeddedWidth,
+			StateHistoryDepth:  2,
+			Seed:               config.Seed + 100,
+		},
+		// [2] smc_posterior
+		{
+			Name: "smc_posterior",
+			Params: simulator.NewParams(map[string][]float64{
+				"verbose":           {verboseFlag},
+				"num_particles":     {float64(N)},
+				"num_params":        {float64(nParams)},
+				"particle_loglikes": make([]float64, N),
+				"particle_params":   proposalInit,
+			}),
+			ParamsFromUpstream: map[string]simulator.UpstreamConfig{
+				"particle_loglikes": {Upstream: 1, Indices: loglikeIndices},
+				"particle_params":   {Upstream: 0},
+			},
+			InitStateValues:   posteriorInit,
+			StateWidth:        posteriorWidth,
+			StateHistoryDepth: 2,
+			Seed:              0,
+		},
+	}
+
+	iterations := []simulator.Iteration{
+		&SMCProposalIteration{Priors: config.Priors},
+		general.NewEmbeddedSimulationRunIteration(innerSettings, innerImpl),
+		&SMCPosteriorIteration{ParamNames: config.ParamNames},
+	}
+
+	settings := &simulator.Settings{
+		Iterations:            iterSettings,
+		InitTimeValue:         0.0,
+		TimestepsHistoryDepth: 2,
+	}
+	settings.Init()
+
 	for i, iter := range iterations {
 		iter.Configure(i, settings)
 	}
@@ -589,14 +653,44 @@ func buildSMCSimulation(
 		OutputCondition: &simulator.EveryStepOutputCondition{},
 		OutputFunction:  &simulator.StateTimeStorageOutputFunction{Store: store},
 		TerminationCondition: &simulator.NumberOfStepsTerminationCondition{
-			MaxNumberOfSteps: T - 1,
+			MaxNumberOfSteps: config.NumRounds,
 		},
-		TimestepFunction: &general.FromStorageTimestepFunction{
-			Data: d.Years,
-		},
+		TimestepFunction: &simulator.ConstantTimestepFunction{Stepsize: 1.0},
 	}
 
-	return settings, implementations, store
+	coordinator := simulator.NewPartitionCoordinator(settings, implementations)
+	coordinator.Run()
+
+	// Extract final round results from stored output
+	proposalVals := store.GetValues("smc_proposals")
+	embeddedVals := store.GetValues("smc_sim")
+	if len(proposalVals) == 0 || len(embeddedVals) == 0 {
+		return nil
+	}
+
+	// Final round particle params
+	finalProposal := proposalVals[len(proposalVals)-1]
+	particleParams := make([][]float64, N)
+	for p := range N {
+		particleParams[p] = make([]float64, nParams)
+		copy(particleParams[p], finalProposal[p*nParams:(p+1)*nParams])
+	}
+
+	// Final round log-likelihoods
+	finalEmbedded := embeddedVals[len(embeddedVals)-1]
+	logLiks := make([]float64, N)
+	for p := range N {
+		ll := finalEmbedded[loglikeOutputOffset(p, numCov)]
+		if math.IsNaN(ll) {
+			ll = math.Inf(-1)
+		}
+		logLiks[p] = ll
+	}
+
+	result := computePosterior(config.ParamNames, particleParams, logLiks, nil)
+	result.ParticleParams = particleParams
+	result.ParticleLogLik = logLiks
+	return result
 }
 
 // computePosterior computes posterior statistics from weighted particles.
@@ -609,10 +703,8 @@ func computePosterior(
 	N := len(particleParams)
 	nParams := len(particleParams[0])
 
-	// Log marginal likelihood estimate: log(mean(exp(logLiks)))
 	logMarginalLik := logSumExp(logLiks) - math.Log(float64(N))
 
-	// Normalised weights
 	logWeights := make([]float64, N)
 	copy(logWeights, logLiks)
 	logZ := logSumExp(logWeights)
@@ -621,7 +713,6 @@ func computePosterior(
 		weights[i] = math.Exp(logWeights[i] - logZ)
 	}
 
-	// Posterior mean
 	postMean := make([]float64, nParams)
 	for p := range N {
 		for j := range nParams {
@@ -629,7 +720,6 @@ func computePosterior(
 		}
 	}
 
-	// Posterior covariance
 	postCov := make([]float64, nParams*nParams)
 	for p := range N {
 		for i := range nParams {
@@ -641,7 +731,6 @@ func computePosterior(
 		}
 	}
 
-	// Posterior std dev
 	postStd := make([]float64, nParams)
 	for j := range nParams {
 		postStd[j] = math.Sqrt(postCov[j*nParams+j])
@@ -669,10 +758,8 @@ func sampleMultivariateNormal(
 ) [][]float64 {
 	d := len(mean)
 
-	// Cholesky decomposition of covariance
 	L := choleskyDecomp(covFlat, d)
 	if L == nil {
-		// Fallback: use diagonal with inflated variance
 		L = make([]float64, d*d)
 		for i := range d {
 			v := covFlat[i*d+i]
@@ -686,12 +773,10 @@ func sampleMultivariateNormal(
 	samples := make([][]float64, n)
 	for i := range n {
 		for {
-			// Draw standard normal
 			z := make([]float64, d)
 			for j := range d {
 				z[j] = rng.NormFloat64()
 			}
-			// Transform: x = mean + L * z
 			x := make([]float64, d)
 			for row := range d {
 				x[row] = mean[row]
@@ -699,7 +784,6 @@ func sampleMultivariateNormal(
 					x[row] += L[row*d+col] * z[col]
 				}
 			}
-			// Check all priors
 			valid := true
 			for j, p := range priors {
 				if !p.InSupport(x[j]) {
@@ -741,13 +825,11 @@ func choleskyDecomp(a []float64, d int) []float64 {
 }
 
 // regulariseCov adds a minimum diagonal to prevent posterior covariance
-// collapse between importance sampling rounds. Uses 1% of prior variance
-// as a floor for each diagonal element.
+// collapse between importance sampling rounds.
 func regulariseCov(cov []float64, d int, priors []Prior) []float64 {
 	reg := make([]float64, len(cov))
 	copy(reg, cov)
 	for i := range d {
-		// Compute a reasonable floor from the prior's scale
 		var priorVar float64
 		switch p := priors[i].(type) {
 		case *UniformPrior:
@@ -768,11 +850,6 @@ func regulariseCov(cov []float64, d int, priors []Prior) []float64 {
 		}
 	}
 	return reg
-}
-
-// LogSumExpPublic computes log(sum(exp(x))) with numerical stability.
-func LogSumExpPublic(x []float64) float64 {
-	return logSumExp(x)
 }
 
 // logSumExp computes log(sum(exp(x))) with numerical stability.
@@ -797,7 +874,6 @@ func logSumExp(x []float64) float64 {
 }
 
 // WeightedQuantiles computes weighted quantiles from particle values.
-// Returns quantiles at the given probability levels (e.g., 0.025, 0.5, 0.975).
 func WeightedQuantiles(values, weights, probs []float64) []float64 {
 	n := len(values)
 	indices := make([]int, n)
@@ -813,7 +889,6 @@ func WeightedQuantiles(values, weights, probs []float64) []float64 {
 	for i := 1; i < n; i++ {
 		cumWeight[i] = cumWeight[i-1] + weights[indices[i]]
 	}
-	// Normalise
 	total := cumWeight[n-1]
 	for i := range n {
 		cumWeight[i] /= total

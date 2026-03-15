@@ -104,7 +104,7 @@ func (p *LogNormalPrior) InSupport(x float64) bool {
 }
 
 // DefaultRickerPriors returns the default priors for the 7 Ricker model parameters:
-// [growth_rate, density_dependence, beta_flow, beta_temp, beta_do, process_noise_sd, obs_noise_sd]
+// [growth_rate, density_dependence, beta_flow, beta_temp, beta_do, process_noise_sd, obs_noise_var]
 func DefaultRickerPriors() []Prior {
 	return []Prior{
 		&TruncatedNormalPrior{Mu: 0.5, Sigma: 1.0, Lo: -2.0, Hi: 5.0}, // growth_rate
@@ -113,6 +113,6 @@ func DefaultRickerPriors() []Prior {
 		&TruncatedNormalPrior{Mu: 0, Sigma: 0.3, Lo: -2.0, Hi: 2.0},   // beta_temp
 		&TruncatedNormalPrior{Mu: 0, Sigma: 0.3, Lo: -2.0, Hi: 2.0},   // beta_do
 		&HalfNormalPrior{Sigma: 0.5},                                    // process_noise_sd
-		&HalfNormalPrior{Sigma: 0.5},                                    // obs_noise_sd
+		&LogNormalPrior{Mu: -1.5, Sigma: 1.0},                          // obs_noise_var
 	}
 }
