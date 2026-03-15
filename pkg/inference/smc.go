@@ -693,6 +693,19 @@ func RunSMC(d *data.SiteData, config SMCConfig) *SMCResult {
 	return result
 }
 
+// RunSMCSafe wraps RunSMC with panic recovery, returning nil and the
+// error message if the inner simulation panics.
+func RunSMCSafe(d *data.SiteData, config SMCConfig) (result *SMCResult, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			result = nil
+			err = fmt.Errorf("%v", r)
+		}
+	}()
+	result = RunSMC(d, config)
+	return result, nil
+}
+
 // computePosterior computes posterior statistics from weighted particles.
 func computePosterior(
 	paramNames []string,

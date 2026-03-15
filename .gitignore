@@ -6,3 +6,6 @@ fetchcovariates
 
 fit
 !cmd/fit/
+
+batchsmc
+!cmd/batchsmc/

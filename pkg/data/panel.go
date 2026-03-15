@@ -84,6 +84,72 @@ func LoadSiteTimeSeries(panelFile string, siteID int) *SiteData {
 	}
 }
 
+// LoadAllSiteTimeSeries reads the panel CSV once and returns time series
+// for every site. Sites with zero valid rows (density <= 0) are omitted.
+func LoadAllSiteTimeSeries(panelFile string) map[int]*SiteData {
+	f, err := os.Open(panelFile)
+	if err != nil {
+		panic("opening panel: " + err.Error())
+	}
+	defer f.Close()
+
+	r := csv.NewReader(f)
+	headers, err := r.Read()
+	if err != nil {
+		panic("reading header: " + err.Error())
+	}
+
+	idx := make(map[string]int)
+	for i, h := range headers {
+		idx[h] = i
+	}
+
+	type siteAccum struct {
+		years      []float64
+		logDensity [][]float64
+		covariates [][]float64
+	}
+	sites := make(map[int]*siteAccum)
+
+	for {
+		record, err := r.Read()
+		if err != nil {
+			break
+		}
+		id, _ := strconv.Atoi(record[idx["SITE_ID"]])
+		year, _ := strconv.ParseFloat(record[idx["YEAR"]], 64)
+		density, _ := strconv.ParseFloat(record[idx["DENSITY"]], 64)
+		if density <= 0 {
+			continue
+		}
+
+		flow := parseFloatDefault(record[idx["MEAN_FLOW"]])
+		temp := parseFloatDefault(record[idx["MEAN_TEMP"]])
+		do := parseFloatDefault(record[idx["MEAN_DO"]])
+
+		acc, ok := sites[id]
+		if !ok {
+			acc = &siteAccum{}
+			sites[id] = acc
+		}
+		acc.years = append(acc.years, year)
+		acc.logDensity = append(acc.logDensity, []float64{math.Log(density)})
+		acc.covariates = append(acc.covariates, []float64{flow, temp, do})
+	}
+
+	result := make(map[int]*SiteData, len(sites))
+	for id, acc := range sites {
+		result[id] = &SiteData{
+			SiteID:        id,
+			Years:         acc.years,
+			LogDensity:    acc.logDensity,
+			Covariates:    acc.covariates,
+			NumCovariates: 3,
+		}
+	}
+	return result
+}
+
 func parseFloatDefault(s string) float64 {
 	v, err := strconv.ParseFloat(s, 64)
 	if err != nil {
