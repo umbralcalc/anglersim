@@ -10,5 +10,8 @@ fit
 batchsmc
 !cmd/batchsmc/
 
+batchhierarchical
+!cmd/batchhierarchical/
+
 validate
 !cmd/validate/
