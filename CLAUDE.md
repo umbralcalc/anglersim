@@ -19,12 +19,21 @@ pkg/inference/      # Bayesian inference
   priors.go          # Prior distributions (Uniform, TruncatedNormal, HalfNormal, LogNormal)
   smc.go             # SMC iterations + RunSMC() using EmbeddedSimulationRunIteration
   synthetic.go       # GenerateSyntheticData for testing parameter recovery
+  hierarchical.go    # Empirical Bayes hierarchical model (EstimateHyperParams, HierarchicalPriors)
+pkg/simulate/       # Policy scenario simulation
+  scenario.go        # Scenario definitions (7 predefined: baseline, climate, flow, DO, combined)
+  forward.go         # ProjectSite() Monte Carlo forward simulation engine
 cmd/fit/            # CLI: random-search MLE (baseline)
 cmd/fetchcovariates/ # CLI: fetch EA flow/WQ data for panel sites
+cmd/batchsmc/       # CLI: independent batch SMC fitting (790 sites)
+cmd/batchhierarchical/ # CLI: iterative empirical Bayes batch fitting
+cmd/validate/       # CLI: held-out prediction validation
+cmd/simulate/       # CLI: policy scenario simulation (all scenarios × all sites)
 cfg/                # Stochadex YAML configs
   smc_inference.yaml # Reference config for SMC with embedded inner sim (N=2)
 nbs/                # GoNB Jupyter notebooks
-  data_exploration.ipynb  # Data exploration and coverage analysis
+  data_exploration.ipynb    # Data exploration and coverage analysis
+  model_validation.ipynb    # Model validation, hierarchical comparison, policy scenarios
 dat/                # Data files (gitignored, see below)
 ```
 
@@ -152,9 +161,45 @@ Log-likelihoods are extracted from the embedded output via indexed upstream on t
 7. ✅ Stochastic Ricker population model (pkg/population/ricker.go)
 8. ✅ SMC Bayesian inference using EmbeddedSimulationRunIteration (pkg/inference/smc.go)
 9. ✅ YAML config updated to use stochadex `embedded` field (cfg/smc_inference.yaml)
-10. Next: Multi-site batch fitting, hierarchical model across sites
-11. Next: Model validation — held-out prediction, residual diagnostics
-12. Next: Policy simulation scenarios with fitted model
+10. ✅ Model validation — held-out prediction, residual diagnostics (nbs/model_validation.ipynb)
+11. ✅ Hierarchical empirical Bayes model (pkg/inference/hierarchical.go, cmd/batchhierarchical)
+12. ✅ Policy simulation scenarios (pkg/simulate, cmd/simulate)
+13. ✅ First policy simulation run — all 7 scenarios × 790 sites
+
+## Key Results
+
+### Model Validation
+- **One-step-ahead RMSE:** median 0.73 in log-density (~2x error in density)
+- **Held-out prediction (3yr):** median RMSE 0.67, 83% coverage at 90% nominal
+- **Residual bias:** slight positive (mean 0.08/step)
+
+### Hierarchical Model
+- Posterior std on covariate effects reduced ~90% (e.g., beta_flow: 0.168 → 0.018)
+- 99%+ of sites have narrower posteriors under hierarchical priors
+- Wide-posterior flags reduced: beta_flow 504→251, beta_temp 498→178, beta_do 526→462
+
+### Policy Scenario Results (20yr projection, 790 sites)
+| Scenario | Med density Δ | Sites declining | Critical (>50% loss) | Mean extinction P |
+|----------|--------------|-----------------|---------------------|-------------------|
+| baseline | +0.4% | 49.2% | 8.6% | 0.051 |
+| climate_1c | -8.8% | 61.3% | 12.9% | 0.066 |
+| climate_2c | -17.5% | 70.3% | 21.1% | 0.084 |
+| low_abstraction | +0.2% | 49.4% | 9.1% | 0.052 |
+| drought | +2.1% | 47.3% | 8.1% | 0.049 |
+| wq_improvement | +0.4% | 49.2% | 8.7% | 0.051 |
+| combined_2c_oxy | -17.4% | 70.1% | 21.3% | 0.084 |
+
+**Key finding:** Temperature is the dominant driver. Flow and DO interventions have negligible effect at the population level — their covariate effects are near zero in the hierarchical model. Combined mitigation (+15% DO) does not offset +2°C warming.
+
+**Caveats:**
+- Near-zero flow/DO effects may reflect data limitations (annual aggregation, covariate station matching noise) rather than ecological irrelevance
+- Model fitted on density (fish/m²) from electrofishing surveys — habitat loss wouldn't show up
+- Temperature signal may partly capture correlated time trends (warming + other long-term changes)
+
+## Next Steps
+- Regional breakdown of scenario impacts (using EA AREA from panel data)
+- Seasonal covariate resolution (if data permits) to improve flow/DO signal
+- Stocking/policy timeline integration for counterfactual analysis
 
 ---
 
