@@ -29,6 +29,7 @@ func main() {
 	workers := flag.Int("workers", 4, "parallel workers")
 	baseSeed := flag.Uint64("seed", 42, "base random seed")
 	minYears := flag.Int("min-years", 10, "minimum years of data per site")
+	regionalFile := flag.String("regional", "", "per-region summary CSV (optional)")
 	// Custom scenario overrides
 	tempShift := flag.Float64("temp-shift", 0, "custom: temperature shift (°C)")
 	flowPct := flag.Float64("flow-pct", 0, "custom: flow % change (e.g., 0.15 = +15%)")
@@ -151,6 +152,12 @@ func main() {
 	// Print fleet-level summary
 	printFleetSummary(scenarios, projections)
 
+	// Regional breakdown
+	printRegionalSummary(scenarios, projections)
+	if *regionalFile != "" {
+		writeRegionalSummary(*regionalFile, scenarios, projections)
+	}
+
 	log.Printf("Done. Projections: %s, Summary: %s", *outFile, *summaryFile)
 }
 
@@ -196,13 +203,14 @@ func writeProjections(path string, projections []*simulate.SiteProjection) {
 	defer f.Close()
 
 	w := csv.NewWriter(f)
-	w.Write([]string{"SITE_ID", "SCENARIO", "YEAR", "MEAN_LOG_DENSITY",
+	w.Write([]string{"SITE_ID", "AREA", "SCENARIO", "YEAR", "MEAN_LOG_DENSITY",
 		"MEDIAN_LOG_DENSITY", "LO90", "HI90", "LO50", "HI50"})
 
 	for _, p := range projections {
 		for t := range p.ProjYears {
 			w.Write([]string{
 				strconv.Itoa(p.SiteID),
+				p.Area,
 				p.ScenarioName,
 				fmt.Sprintf("%.0f", p.ProjYears[t]),
 				fmt.Sprintf("%.6f", p.MeanLogN[t]),
@@ -225,7 +233,7 @@ func writeSummary(path string, projections []*simulate.SiteProjection) {
 	defer f.Close()
 
 	w := csv.NewWriter(f)
-	w.Write([]string{"SITE_ID", "SCENARIO", "BASELINE_MEAN_LOG_DENSITY",
+	w.Write([]string{"SITE_ID", "AREA", "SCENARIO", "BASELINE_MEAN_LOG_DENSITY",
 		"PROJECTED_MEAN_LOG_DENSITY", "DENSITY_CHANGE_PCT",
 		"EXTINCTION_PROB", "RECOVERY_PROB"})
 
@@ -233,6 +241,7 @@ func writeSummary(path string, projections []*simulate.SiteProjection) {
 		h := len(p.MeanLogN) - 1
 		w.Write([]string{
 			strconv.Itoa(p.SiteID),
+			p.Area,
 			p.ScenarioName,
 			fmt.Sprintf("%.6f", p.BaselineMeanLogN),
 			fmt.Sprintf("%.6f", p.MeanLogN[h]),
@@ -291,4 +300,135 @@ func printFleetSummary(scenarios []simulate.Scenario, projections []*simulate.Si
 			sumRecP/float64(n))
 	}
 	fmt.Println()
+}
+
+type regionalStats struct {
+	area      string
+	scenario  string
+	nSites    int
+	medChange float64
+	declining float64
+	critical  float64
+	meanExtP  float64
+	meanRecP  float64
+}
+
+func computeRegionalStats(scenarios []simulate.Scenario, projections []*simulate.SiteProjection) []regionalStats {
+	// Group by (area, scenario)
+	type key struct{ area, scenario string }
+	grouped := make(map[key][]*simulate.SiteProjection)
+	for _, p := range projections {
+		k := key{p.Area, p.ScenarioName}
+		grouped[k] = append(grouped[k], p)
+	}
+
+	// Collect unique areas sorted
+	areaSet := make(map[string]bool)
+	for _, p := range projections {
+		if p.Area != "" {
+			areaSet[p.Area] = true
+		}
+	}
+	areas := make([]string, 0, len(areaSet))
+	for a := range areaSet {
+		areas = append(areas, a)
+	}
+	sort.Strings(areas)
+
+	var results []regionalStats
+	for _, s := range scenarios {
+		for _, area := range areas {
+			projs := grouped[key{area, s.Name}]
+			n := len(projs)
+			if n == 0 {
+				continue
+			}
+
+			changes := make([]float64, n)
+			declining := 0
+			critical := 0
+			sumExtP := 0.0
+			sumRecP := 0.0
+
+			for i, p := range projs {
+				changes[i] = p.MeanDensityChangePct
+				if p.MeanDensityChangePct < 0 {
+					declining++
+				}
+				if p.MeanDensityChangePct < -50 {
+					critical++
+				}
+				sumExtP += p.ExtinctionProb
+				sumRecP += p.RecoveryProb
+			}
+
+			sort.Float64s(changes)
+			results = append(results, regionalStats{
+				area:      area,
+				scenario:  s.Name,
+				nSites:    n,
+				medChange: changes[n/2],
+				declining: 100 * float64(declining) / float64(n),
+				critical:  100 * float64(critical) / float64(n),
+				meanExtP:  sumExtP / float64(n),
+				meanRecP:  sumRecP / float64(n),
+			})
+		}
+	}
+	return results
+}
+
+func printRegionalSummary(scenarios []simulate.Scenario, projections []*simulate.SiteProjection) {
+	stats := computeRegionalStats(scenarios, projections)
+	if len(stats) == 0 {
+		return
+	}
+
+	fmt.Printf("\n=== Regional Breakdown ===\n")
+	for _, s := range scenarios {
+		fmt.Printf("\n%-22s\n", s.Name)
+		fmt.Printf("  %-28s %5s %9s %9s %9s %9s %9s\n",
+			"Area", "Sites", "MedDens%", "Decl%", "Crit50%", "ExtP", "RecP")
+		fmt.Println("  " + strings.Repeat("-", 82))
+
+		for _, r := range stats {
+			if r.scenario != s.Name {
+				continue
+			}
+			fmt.Printf("  %-28s %5d %8.1f%% %8.1f%% %8.1f%% %9.4f %9.4f\n",
+				r.area, r.nSites, r.medChange,
+				r.declining, r.critical,
+				r.meanExtP, r.meanRecP)
+		}
+	}
+	fmt.Println()
+}
+
+func writeRegionalSummary(path string, scenarios []simulate.Scenario, projections []*simulate.SiteProjection) {
+	stats := computeRegionalStats(scenarios, projections)
+
+	f, err := os.Create(path)
+	if err != nil {
+		log.Fatalf("creating regional summary: %v", err)
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	w.Write([]string{"AREA", "SCENARIO", "NUM_SITES", "MEDIAN_DENSITY_CHANGE_PCT",
+		"SITES_DECLINING_PCT", "SITES_CRITICAL_PCT", "MEAN_EXTINCTION_PROB", "MEAN_RECOVERY_PROB"})
+
+	for _, r := range stats {
+		w.Write([]string{
+			r.area,
+			r.scenario,
+			strconv.Itoa(r.nSites),
+			fmt.Sprintf("%.2f", r.medChange),
+			fmt.Sprintf("%.1f", r.declining),
+			fmt.Sprintf("%.1f", r.critical),
+			fmt.Sprintf("%.4f", r.meanExtP),
+			fmt.Sprintf("%.4f", r.meanRecP),
+		})
+	}
+	w.Flush()
+	log.Printf("Regional summary: %s (%d rows)", path, len(stats))
 }

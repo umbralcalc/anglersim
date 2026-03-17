@@ -16,6 +16,7 @@ import (
 // SiteData holds the time series for a single site, ready for model fitting.
 type SiteData struct {
 	SiteID        int
+	Area          string      // EA management area (e.g. "Devon and Cornwall")
 	Years         []float64
 	LogDensity    [][]float64 // [T][1] — observed log-density per year
 	Covariates    [][]float64 // [T][K] — environmental covariates per year
@@ -105,11 +106,14 @@ func LoadAllSiteTimeSeries(panelFile string) map[int]*SiteData {
 	}
 
 	type siteAccum struct {
+		area       string
 		years      []float64
 		logDensity [][]float64
 		covariates [][]float64
 	}
 	sites := make(map[int]*siteAccum)
+
+	areaIdx, hasArea := idx["AREA"]
 
 	for {
 		record, err := r.Read()
@@ -130,6 +134,9 @@ func LoadAllSiteTimeSeries(panelFile string) map[int]*SiteData {
 		acc, ok := sites[id]
 		if !ok {
 			acc = &siteAccum{}
+			if hasArea {
+				acc.area = record[areaIdx]
+			}
 			sites[id] = acc
 		}
 		acc.years = append(acc.years, year)
@@ -141,6 +148,7 @@ func LoadAllSiteTimeSeries(panelFile string) map[int]*SiteData {
 	for id, acc := range sites {
 		result[id] = &SiteData{
 			SiteID:        id,
+			Area:          acc.area,
 			Years:         acc.years,
 			LogDensity:    acc.logDensity,
 			Covariates:    acc.covariates,
@@ -160,6 +168,7 @@ func TruncateSiteData(sd *SiteData, holdout int) (train, test *SiteData) {
 	split := T - holdout
 	train = &SiteData{
 		SiteID:        sd.SiteID,
+		Area:          sd.Area,
 		Years:         sd.Years[:split],
 		LogDensity:    sd.LogDensity[:split],
 		Covariates:    sd.Covariates[:split],
@@ -167,6 +176,7 @@ func TruncateSiteData(sd *SiteData, holdout int) (train, test *SiteData) {
 	}
 	test = &SiteData{
 		SiteID:        sd.SiteID,
+		Area:          sd.Area,
 		Years:         sd.Years[split:],
 		LogDensity:    sd.LogDensity[split:],
 		Covariates:    sd.Covariates[split:],

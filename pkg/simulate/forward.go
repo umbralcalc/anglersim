@@ -36,6 +36,7 @@ func DefaultProjectionConfig() ProjectionConfig {
 // SiteProjection holds the projection results for one site under one scenario.
 type SiteProjection struct {
 	SiteID       int
+	Area         string
 	ScenarioName string
 
 	// Historical baseline
@@ -71,6 +72,7 @@ func ProjectSite(
 
 	proj := &SiteProjection{
 		SiteID:       sd.SiteID,
+		Area:         sd.Area,
 		ScenarioName: scenario.Name,
 	}
 

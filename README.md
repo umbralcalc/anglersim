@@ -18,14 +18,20 @@ The core dataset is the EA's electrofishing survey data (NFPD bulk downloads). C
 
 This is sufficient to build and train stochastic population dynamics models at well-surveyed sites.
 
-### Supplementary data sources (to be integrated)
+### Integrated environmental covariates
+
+| Source | Contains | Access | Integration |
+|--------|----------|--------|-------------|
+| **EA Hydrology API** | Daily mean river flow (m³/s) from gauging stations | `environment.data.gov.uk/hydrology/` | Nearest station by easting/northing, annual stats (mean, min, max, Q10, Q90) joined to panel |
+| **EA Water Quality API** | Temperature (°C), dissolved oxygen (mg/l), ammonia, BOD | `environment.data.gov.uk/water-quality/` | Nearest river sampling point (type F6), annual stats joined to panel |
+
+Both APIs require no authentication. Fetched data is cached in `dat/hydrology/` and `dat/water_quality/`. Run `cmd/fetchcovariates` to populate.
+
+### Supplementary data sources (not yet integrated)
 
 | Source | Contains | Access | Link to NFPD |
 |--------|----------|--------|-------------|
 | **Rod Catch Returns** | Annual salmon & sea trout angling catch by river | GOV.UK statistics downloads (ODS/CSV) | By river/catchment name |
-| **Water Quality Archive** | Temperature, dissolved oxygen, ammonia, BOD, nutrients | EA API: `environment.data.gov.uk/water-quality/` | Spatial join on easting/northing |
-| **National River Flow Archive** | Daily mean flows from ~1,500 stations, catchment descriptors | NRFA API: `nrfa.ceh.ac.uk` | Spatial proximity + river name |
-| **EA Hydrology API** | 15-minute river level/flow readings | `environment.data.gov.uk/hydrology/` | Spatial join |
 | **WFD Fish Classifications** | Ecological quality ratios, status classes | Catchment Data Explorer | WFD waterbody ID |
 
 **Not publicly available:** Fish stocking records (EA internal, available via FOI) and a structured policy/regulation change timeline (requires manual curation from legislation.gov.uk and EA bylaws).
@@ -121,7 +127,7 @@ go run ./cmd/validate \
   --workers 4 --holdout 3 --sims 200
 ```
 
-**6. Policy scenario simulation** — Monte Carlo forward projections under predefined policy scenarios (baseline, climate +1/+2 C, low abstraction, drought, water quality improvement, combined).
+**6. Policy scenario simulation** — Monte Carlo forward projections under predefined policy scenarios (baseline, climate +1/+2 C, low abstraction, drought, water quality improvement, combined). Pass `--regional` to produce a per-region summary CSV.
 
 ```bash
 go run ./cmd/simulate \
@@ -129,6 +135,7 @@ go run ./cmd/simulate \
   --params dat/hierarchical_results.csv \
   --out dat/projections.csv \
   --summary dat/projections_summary.csv \
+  --regional dat/regional_summary.csv \
   --scenario all --horizon 20 --sims 500 --workers 4
 ```
 
@@ -143,6 +150,45 @@ go run ./cmd/fit \
   --panel dat/brown_trout_panel_with_covariates.csv \
   --site 1915 --n 5000
 ```
+
+## Key results
+
+### Fleet-level scenario impacts (20yr projection, 790 sites)
+
+| Scenario | Med density change | Sites declining | Critical (>50% loss) | Mean extinction P |
+|----------|-------------------|-----------------|---------------------|-------------------|
+| baseline | +0.4% | 49.2% | 8.6% | 0.051 |
+| climate +1°C | -8.9% | 61.3% | 12.9% | 0.066 |
+| climate +2°C | -17.5% | 70.3% | 21.1% | 0.084 |
+| low abstraction (+15% flow) | +0.2% | 49.4% | 9.1% | 0.052 |
+| drought (-25% flow) | +2.1% | 47.3% | 8.1% | 0.049 |
+| water quality (+15% DO) | +0.4% | 49.2% | 8.7% | 0.051 |
+| combined +2°C & +15% DO | -17.4% | 70.1% | 21.3% | 0.084 |
+
+**Temperature is the dominant driver.** Flow and dissolved oxygen interventions have negligible effect at the population level — their covariate effects are near zero in the hierarchical model. Combined mitigation (+15% DO) does not offset +2°C warming.
+
+### Regional vulnerability (climate +2°C scenario)
+
+| Region | Sites | Med density change | Critical (>50% loss) | Mean extinction P |
+|--------|-------|-------------------|---------------------|-------------------|
+| Kent & South London | 7 | -44.1% | 42.9% | 0.372 |
+| Central | 12 | -32.2% | 33.3% | 0.030 |
+| West Thames | 16 | -30.0% | 31.2% | 0.123 |
+| North East | 71 | -26.0% | 31.0% | 0.139 |
+| Wessex | 37 | -22.1% | 21.6% | 0.098 |
+| Northern | 16 | -21.6% | 31.2% | 0.131 |
+| North | 153 | -20.2% | 17.0% | 0.040 |
+| Devon & Cornwall | 206 | -15.3% | 18.9% | 0.040 |
+| Yorkshire | 128 | -17.2% | 23.4% | 0.154 |
+
+The North East, Yorkshire, and Kent & South London regions show the highest extinction risk. Devon & Cornwall — the largest region — is relatively resilient. Some small regions (South, North East Thames) show positive trends even under +2°C, likely reflecting poorly-identified site parameters due to sparse data.
+
+### Caveats
+
+- Near-zero flow/DO effects may reflect data limitations (annual aggregation, covariate station matching noise) rather than ecological irrelevance
+- Model fitted on density (fish/m²) from electrofishing surveys — habitat loss wouldn't show up
+- Temperature signal may partly capture correlated time trends (warming + other long-term changes)
+- Regions with few sites (< 20) should be interpreted with caution
 
 ## Data sources for the project
 
