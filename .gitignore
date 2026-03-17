@@ -18,3 +18,4 @@ validate
 
 simulate
 !cmd/simulate/
+!pkg/simulate/
