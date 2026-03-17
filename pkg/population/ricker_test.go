@@ -74,6 +74,65 @@ func TestRickerIteration(t *testing.T) {
 		},
 	)
 	t.Run(
+		"test that allee effect suppresses growth at low density",
+		func(t *testing.T) {
+			settings := simulator.LoadSettingsFromYaml(
+				"./ricker_settings.yaml",
+			)
+			// Zero noise, very low initial density
+			settings.Iterations[1].Params.Map["process_noise_sd"] = []float64{0.0}
+			settings.Iterations[1].Params.Map["allee_effect"] = []float64{50.0}
+			settings.Iterations[1].InitStateValues = []float64{-8.0} // ~0.0003 fish/m²
+
+			iterations := []simulator.Iteration{
+				&general.ParamValuesIteration{},
+				&RickerIteration{},
+			}
+			for i, iter := range iterations {
+				iter.Configure(i, settings)
+			}
+			store := simulator.NewStateTimeStorage()
+			implementations := &simulator.Implementations{
+				Iterations:      iterations,
+				OutputCondition: &simulator.EveryStepOutputCondition{},
+				OutputFunction:  &simulator.StateTimeStorageOutputFunction{Store: store},
+				TerminationCondition: &simulator.NumberOfStepsTerminationCondition{
+					MaxNumberOfSteps: 50,
+				},
+				TimestepFunction: &simulator.ConstantTimestepFunction{Stepsize: 1.0},
+			}
+			coordinator := simulator.NewPartitionCoordinator(
+				settings,
+				implementations,
+			)
+			coordinator.Run()
+
+			popStates := store.GetValues("population")
+
+			// Verify first step: Allee multiplier should suppress growth
+			// N0 = exp(-8) ≈ 0.000335
+			// allee = 1 - exp(-50 * 0.000335) ≈ 1 - exp(-0.01676) ≈ 0.01662
+			// effective r0 = 0.5 * 0.01662 ≈ 0.00831
+			// vs without Allee: effective r0 = 0.5
+			logN0 := -8.0
+			density0 := math.Exp(logN0)
+			allee := 1.0 - math.Exp(-50.0*density0)
+			envEffect := 0.1*0.5 + (-0.02)*12.0 + 0.05*9.0
+			expectedLogN1 := logN0 + 0.5*allee + envEffect - 1.0*density0
+
+			gotLogN1 := popStates[1][0]
+			if !scalar.EqualWithinAbsOrRel(gotLogN1, expectedLogN1, 1e-10, 1e-10) {
+				t.Errorf("allee step 1: got logN=%v, want %v", gotLogN1, expectedLogN1)
+			}
+
+			// With Allee effect and very low density, growth should be
+			// much weaker than without it
+			if gotLogN1-logN0 > 0.3 {
+				t.Errorf("allee effect should suppress growth at low density, got delta=%v", gotLogN1-logN0)
+			}
+		},
+	)
+	t.Run(
 		"test that ricker runs with harnesses",
 		func(t *testing.T) {
 			settings := simulator.LoadSettingsFromYaml(

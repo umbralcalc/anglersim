@@ -121,21 +121,24 @@ func ProjectSite(
 	// Prior support bounds for parameter sampling
 	type bound struct{ lo, hi float64 }
 	priorBounds := []bound{
-		{-2.0, 5.0},      // growth_rate
+		{-2.0, 5.0},        // growth_rate
 		{0.0, math.Inf(1)}, // density_dependence (LogNormal, positive)
-		{-2.0, 2.0},      // beta_flow
-		{-2.0, 2.0},      // beta_temp
-		{-2.0, 2.0},      // beta_do
+		{-2.0, 2.0},        // beta_flow
+		{-2.0, 2.0},        // beta_temp
+		{-2.0, 2.0},        // beta_do
 		{0.0, math.Inf(1)}, // process_noise_sd (HalfNormal, positive)
 		{0.0, math.Inf(1)}, // obs_noise_var (LogNormal, positive)
+		{0.0, math.Inf(1)}, // allee_effect (LogNormal, positive)
 	}
+
+	nModelParams := len(params.Mean)
 
 	// Run trajectories
 	trajectories := make([][]float64, nSims)
 	for s := range nSims {
 		// Sample parameters from posterior (independent normals, reject outside support)
-		pp := make([]float64, 7)
-		for j := range 7 {
+		pp := make([]float64, nModelParams)
+		for j := range nModelParams {
 			for {
 				pp[j] = params.Mean[j] + rng.NormFloat64()*params.Std[j]
 				if pp[j] >= priorBounds[j].lo && pp[j] <= priorBounds[j].hi {
@@ -148,6 +151,11 @@ func ProjectSite(
 		alpha := pp[1]
 		betas := pp[2:5]
 		sigma := pp[5]
+		// pp[6] = obs_noise_var (unused in forward sim)
+		gamma := 0.0
+		if nModelParams > 7 {
+			gamma = pp[7]
+		}
 
 		traj := make([]float64, horizon)
 		logN := lastLogN
@@ -162,12 +170,17 @@ func ProjectSite(
 				covs[k] += covShifts[k]
 			}
 
-			// Ricker dynamics
+			// Ricker dynamics with Allee effect
 			envEffect := 0.0
 			for k := 0; k < 3 && k < len(covs); k++ {
 				envEffect += betas[k] * covs[k]
 			}
-			logN = logN + r0 + envEffect - alpha*math.Exp(logN) + rng.NormFloat64()*sigma
+			density := math.Exp(logN)
+			alleeMultiplier := 1.0
+			if gamma > 0 {
+				alleeMultiplier = 1.0 - math.Exp(-gamma*density)
+			}
+			logN = logN + r0*alleeMultiplier + envEffect - alpha*density + rng.NormFloat64()*sigma
 
 			// Clip to prevent divergence
 			if logN > 20 {

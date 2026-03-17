@@ -44,7 +44,6 @@ func LoadBatchResults(path string) []SitePosteriorSummary {
 		panic("reading batch results: " + err.Error())
 	}
 
-	nParams := 7
 	var sites []SitePosteriorSummary
 	for _, rec := range records {
 		if rec[3] != "OK" {
@@ -53,6 +52,7 @@ func LoadBatchResults(path string) []SitePosteriorSummary {
 		id, _ := strconv.Atoi(rec[0])
 		ny, _ := strconv.Atoi(rec[1])
 		lml, _ := strconv.ParseFloat(rec[2], 64)
+		nParams := (len(rec) - 4) / 2
 		means := make([]float64, nParams)
 		stds := make([]float64, nParams)
 		for i := range nParams {

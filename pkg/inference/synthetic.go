@@ -12,7 +12,7 @@ import (
 func GenerateSyntheticData(
 	seed uint64,
 	T int,
-	trueParams []float64, // [r0, alpha, b1, b2, b3, sigma, obs_sd]
+	trueParams []float64, // [r0, alpha, b1, b2, b3, sigma, obs_sd, allee_gamma]
 ) *data.SiteData {
 	rng := rand.New(rand.NewPCG(seed, seed+1))
 
@@ -21,6 +21,10 @@ func GenerateSyntheticData(
 	betas := trueParams[2:5]
 	sigma := trueParams[5]
 	obsSd := trueParams[6]
+	gamma := 0.0
+	if len(trueParams) > 7 {
+		gamma = trueParams[7]
+	}
 
 	// Generate some covariates (standardised)
 	covariates := make([][]float64, T)
@@ -51,7 +55,11 @@ func GenerateSyntheticData(
 				envEffect += betas[j] * covariates[t+1][j]
 			}
 			density := math.Exp(logN)
-			logN = logN + r0 + envEffect - alpha*density + rng.NormFloat64()*sigma
+			alleeMultiplier := 1.0
+			if gamma > 0 {
+				alleeMultiplier = 1.0 - math.Exp(-gamma*density)
+			}
+			logN = logN + r0*alleeMultiplier + envEffect - alpha*density + rng.NormFloat64()*sigma
 		}
 	}
 

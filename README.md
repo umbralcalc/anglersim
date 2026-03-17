@@ -157,31 +157,31 @@ go run ./cmd/fit \
 
 | Scenario | Med density change | Sites declining | Critical (>50% loss) | Mean extinction P |
 |----------|-------------------|-----------------|---------------------|-------------------|
-| baseline | +0.4% | 49.2% | 8.6% | 0.051 |
-| climate +1°C | -8.9% | 61.3% | 12.9% | 0.066 |
-| climate +2°C | -17.5% | 70.3% | 21.1% | 0.084 |
-| low abstraction (+15% flow) | +0.2% | 49.4% | 9.1% | 0.052 |
-| drought (-25% flow) | +2.1% | 47.3% | 8.1% | 0.049 |
-| water quality (+15% DO) | +0.4% | 49.2% | 8.7% | 0.051 |
-| combined +2°C & +15% DO | -17.4% | 70.1% | 21.3% | 0.084 |
+| baseline | -8.6% | 59.4% | 17.6% | 0.059 |
+| climate +1°C | -11.6% | 59.5% | 19.4% | 0.063 |
+| climate +2°C | -14.2% | 61.3% | 22.8% | 0.073 |
+| low abstraction (+15% flow) | -8.4% | 58.2% | 17.5% | 0.059 |
+| drought (-25% flow) | -10.3% | 60.6% | 17.7% | 0.059 |
+| water quality (+15% DO) | -8.8% | 59.4% | 17.6% | 0.059 |
+| combined +2°C & +15% DO | -14.2% | 61.3% | 22.8% | 0.074 |
 
-**Temperature is the dominant driver.** Flow and dissolved oxygen interventions have negligible effect at the population level — their covariate effects are near zero in the hierarchical model. Combined mitigation (+15% DO) does not offset +2°C warming.
+The model includes an Allee effect (depensatory growth at low density), which prevents unrealistic recovery projections for near-zero populations. Even the baseline scenario projects a -8.6% median decline, consistent with observed downward trends in the survey data. **Temperature remains the dominant driver**, adding ~6pp of additional decline under +2°C warming. Flow and dissolved oxygen interventions remain negligible at the population level.
 
 ### Regional vulnerability (climate +2°C scenario)
 
 | Region | Sites | Med density change | Critical (>50% loss) | Mean extinction P |
 |--------|-------|-------------------|---------------------|-------------------|
-| Kent & South London | 7 | -44.1% | 42.9% | 0.372 |
-| Central | 12 | -32.2% | 33.3% | 0.030 |
-| West Thames | 16 | -30.0% | 31.2% | 0.123 |
-| North East | 71 | -26.0% | 31.0% | 0.139 |
-| Wessex | 37 | -22.1% | 21.6% | 0.098 |
-| Northern | 16 | -21.6% | 31.2% | 0.131 |
-| North | 153 | -20.2% | 17.0% | 0.040 |
-| Devon & Cornwall | 206 | -15.3% | 18.9% | 0.040 |
-| Yorkshire | 128 | -17.2% | 23.4% | 0.154 |
+| Kent & South London | 7 | -79.0% | 71.4% | 0.263 |
+| West | 34 | -33.4% | 38.2% | 0.139 |
+| Wessex | 37 | -32.6% | 40.5% | 0.127 |
+| Eastern | 39 | -31.1% | 41.0% | 0.116 |
+| Northern | 16 | -24.4% | 31.2% | 0.108 |
+| North | 153 | -17.2% | 19.0% | 0.047 |
+| Yorkshire | 128 | -14.8% | 21.1% | 0.125 |
+| Devon & Cornwall | 206 | -4.6% | 16.5% | 0.021 |
+| North East | 71 | -5.5% | 19.7% | 0.088 |
 
-The North East, Yorkshire, and Kent & South London regions show the highest extinction risk. Devon & Cornwall — the largest region — is relatively resilient. Some small regions (South, North East Thames) show positive trends even under +2°C, likely reflecting poorly-identified site parameters due to sparse data.
+Kent & South London (7 sites) faces the most severe projected decline. The West, Wessex, and Eastern regions show >30% median losses with 38-41% of sites in critical decline. Devon & Cornwall — the largest region — is the most resilient with only -4.6% median change under +2°C.
 
 ### Caveats
 
@@ -189,6 +189,7 @@ The North East, Yorkshire, and Kent & South London regions show the highest exti
 - Model fitted on density (fish/m²) from electrofishing surveys — habitat loss wouldn't show up
 - Temperature signal may partly capture correlated time trends (warming + other long-term changes)
 - Regions with few sites (< 20) should be interpreted with caution
+- The Allee effect prior (LogNormal) is weakly informative — the strength of depensatory growth is estimated per site but may be poorly identified at sites with limited low-density observations
 
 ## Data sources for the project
 

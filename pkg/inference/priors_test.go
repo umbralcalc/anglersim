@@ -103,8 +103,8 @@ func TestLogNormalPrior(t *testing.T) {
 
 func TestDefaultRickerPriors(t *testing.T) {
 	priors := DefaultRickerPriors()
-	if len(priors) != 7 {
-		t.Fatalf("expected 7 priors, got %d", len(priors))
+	if len(priors) != 8 {
+		t.Fatalf("expected 8 priors, got %d", len(priors))
 	}
 	rng := rand.New(rand.NewPCG(99, 100))
 	for i, p := range priors {

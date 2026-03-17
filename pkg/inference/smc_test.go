@@ -13,11 +13,11 @@ func TestSMCDecomposed_Harness(t *testing.T) {
 		"test that decomposed SMC iterations run with harnesses",
 		func(t *testing.T) {
 			trueParams := []float64{
-				0.5, 2.0, 0.0, 0.0, 0.0, 0.15, 0.01,
+				0.5, 2.0, 0.0, 0.0, 0.0, 0.15, 0.01, 50.0,
 			}
 			siteData := GenerateSyntheticData(123, 15, trueParams)
 			numParticles := 10
-			nParams := 7
+			nParams := 8
 
 			applied := analysis.AppliedSMCInference{
 				ProposalName:  "smc_proposals",
@@ -69,6 +69,7 @@ func TestRunSMC_SyntheticRecovery(t *testing.T) {
 		0.0,  // beta_do
 		0.15, // process_noise_sd
 		0.01, // obs_noise_var
+		50.0, // allee_effect
 	}
 
 	d := GenerateSyntheticData(123, 30, trueParams)

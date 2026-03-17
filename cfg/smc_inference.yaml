@@ -1,10 +1,10 @@
 # SMC inference using EmbeddedSimulationRunIteration.
-# N=2 particles, d=7 params. For larger N, use RunSMC() directly.
+# N=2 particles, d=8 params. For larger N, use RunSMC() directly.
 #
 # Outer partition layout:
-#   [0] smc_proposals   SMCProposalIteration        (N*d = 14 state)
+#   [0] smc_proposals   SMCProposalIteration        (N*d = 16 state)
 #   [1] smc_sim         EmbeddedSimulationRunIteration (concat inner states = 8)
-#   [2] smc_posterior   SMCPosteriorIteration        (d + d² + 1 = 57 state)
+#   [2] smc_posterior   SMCPosteriorIteration        (d + d² + 1 = 73 state)
 #
 # Inner partition layout (inside smc_sim):
 #   [0] observed_data   FromStorageIteration         (1 state)
@@ -27,7 +27,7 @@ main:
       verbose: [1]
       posterior_partition: [0]  # resolved via params_as_partitions
       # prior types: TruncNorm=1, LogNorm=3, HalfNorm=2
-      prior_types: [1, 3, 1, 1, 1, 2, 3]
+      prior_types: [1, 3, 1, 1, 1, 2, 3, 3]
       # prior params (4 per prior, stride=4):
       #   growth_rate:       TruncNorm(0.5, 1.0, -2.0, 5.0)
       #   density_dep:       LogNorm(0.5, 1.5, -, -)
@@ -36,6 +36,7 @@ main:
       #   beta_do:           TruncNorm(0, 0.3, -2.0, 2.0)
       #   process_noise_sd:  HalfNorm(0.5, -, -, -)
       #   obs_noise_var:     LogNorm(-1.5, 1.0, -, -)
+      #   allee_effect:      LogNorm(2.0, 1.5, -, -)
       prior_params: [
         0.5, 1.0, -2.0, 5.0,
         0.5, 1.5, 0, 0,
@@ -43,12 +44,13 @@ main:
         0, 0.3, -2.0, 2.0,
         0, 0.3, -2.0, 2.0,
         0.5, 0, 0, 0,
-        -1.5, 1.0, 0, 0
+        -1.5, 1.0, 0, 0,
+        2.0, 1.5, 0, 0
       ]
     params_as_partitions:
       posterior_partition: [smc_posterior]
-    # state_width = N*d = 2*7 = 14
-    init_state_values: [0,0,0,0,0,0,0, 0,0,0,0,0,0,0]
+    # state_width = N*d = 2*8 = 16
+    init_state_values: [0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0]
     state_history_depth: 2
     seed: 42
     extra_packages:
@@ -63,7 +65,7 @@ main:
       init_time_value: [0]  # overridden to siteData.Years[0] via extra_vars
       burn_in_steps: [0]
     params_from_upstream:
-      # Particle 0 (base offset 0*7 = 0)
+      # Particle 0 (base offset 0*8 = 0)
       ricker_0/growth_rate:
         upstream: smc_proposals
         indices: [0]
@@ -79,22 +81,28 @@ main:
       loglike_0/variance:
         upstream: smc_proposals
         indices: [6]
-      # Particle 1 (base offset 1*7 = 7)
-      ricker_1/growth_rate:
+      ricker_0/allee_effect:
         upstream: smc_proposals
         indices: [7]
-      ricker_1/density_dependence:
+      # Particle 1 (base offset 1*8 = 8)
+      ricker_1/growth_rate:
         upstream: smc_proposals
         indices: [8]
+      ricker_1/density_dependence:
+        upstream: smc_proposals
+        indices: [9]
       ricker_1/covariate_coefficients:
         upstream: smc_proposals
-        indices: [9, 10, 11]
+        indices: [10, 11, 12]
       ricker_1/process_noise_sd:
         upstream: smc_proposals
-        indices: [12]
+        indices: [13]
       loglike_1/variance:
         upstream: smc_proposals
-        indices: [13]
+        indices: [14]
+      ricker_1/allee_effect:
+        upstream: smc_proposals
+        indices: [15]
     # state_width = 1 + 3 + 2*2 = 8
     init_state_values: [0, 0,0,0, 0,0, 0,0]
     state_history_depth: 2
@@ -105,25 +113,26 @@ main:
     params:
       verbose: [1]
       num_particles: [2]
-      num_params: [7]
+      num_params: [8]
       particle_loglikes: [0, 0]
-      particle_params: [0,0,0,0,0,0,0, 0,0,0,0,0,0,0]
+      particle_params: [0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0]
     params_from_upstream:
       particle_loglikes:
         upstream: smc_sim
         indices: [5, 7]  # loglike offsets in embedded output
       particle_params:
         upstream: smc_proposals
-    # state_width = d + d² + 1 = 7 + 49 + 1 = 57
+    # state_width = d + d² + 1 = 8 + 64 + 1 = 73
     init_state_values: [
-      0, 0, 0, 0, 0, 0, 0,
-      1, 0, 0, 0, 0, 0, 0,
-      0, 1, 0, 0, 0, 0, 0,
-      0, 0, 1, 0, 0, 0, 0,
-      0, 0, 0, 1, 0, 0, 0,
-      0, 0, 0, 0, 1, 0, 0,
-      0, 0, 0, 0, 0, 1, 0,
-      0, 0, 0, 0, 0, 0, 1,
+      0, 0, 0, 0, 0, 0, 0, 0,
+      1, 0, 0, 0, 0, 0, 0, 0,
+      0, 1, 0, 0, 0, 0, 0, 0,
+      0, 0, 1, 0, 0, 0, 0, 0,
+      0, 0, 0, 1, 0, 0, 0, 0,
+      0, 0, 0, 0, 1, 0, 0, 0,
+      0, 0, 0, 0, 0, 1, 0, 0,
+      0, 0, 0, 0, 0, 0, 1, 0,
+      0, 0, 0, 0, 0, 0, 0, 1,
       0
     ]
     state_history_depth: 2
@@ -177,6 +186,7 @@ embedded:
       covariate_coefficients: [0, 0, 0]
       covariates: [0, 0, 0]
       process_noise_sd: [0]
+      allee_effect: [0]
     params_from_upstream:
       covariates:
         upstream: covariates
@@ -217,6 +227,7 @@ embedded:
       covariate_coefficients: [0, 0, 0]
       covariates: [0, 0, 0]
       process_noise_sd: [0]
+      allee_effect: [0]
     params_from_upstream:
       covariates:
         upstream: covariates

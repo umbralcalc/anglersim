@@ -181,12 +181,15 @@ func loadParams(path string) map[int]*simulate.SiteFittedParams {
 			continue
 		}
 		id, _ := strconv.Atoi(rec[0])
+		// Detect number of parameters from CSV width:
+		// columns: SITE_ID, NUM_YEARS, LOG_MARGINAL_LIK, STATUS, then pairs of MEAN_x, STD_x
+		nParams := (len(rec) - 4) / 2
 		p := &simulate.SiteFittedParams{
 			SiteID: id,
-			Mean:   make([]float64, 7),
-			Std:    make([]float64, 7),
+			Mean:   make([]float64, nParams),
+			Std:    make([]float64, nParams),
 		}
-		for i := range 7 {
+		for i := range nParams {
 			p.Mean[i], _ = strconv.ParseFloat(rec[4+2*i], 64)
 			p.Std[i], _ = strconv.ParseFloat(rec[5+2*i], 64)
 		}

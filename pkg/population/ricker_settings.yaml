@@ -13,6 +13,7 @@ iterations:
     covariate_coefficients: [0.1, -0.02, 0.05]
     covariates: [0.5, 12.0, 9.0]
     process_noise_sd: [0.1]
+    allee_effect: [0.0]
   params_from_upstream:
     covariates:
       upstream: 0

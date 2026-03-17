@@ -32,6 +32,7 @@ func DefaultSMCConfig() SMCConfig {
 			"growth_rate", "density_dependence",
 			"beta_flow", "beta_temp", "beta_do",
 			"process_noise_sd", "obs_noise_var",
+			"allee_effect",
 		},
 	}
 }
@@ -85,6 +86,7 @@ func buildInnerSimConfig(
 				"covariate_coefficients": {0, 0, 0},
 				"covariates":             d.Covariates[0],
 				"process_noise_sd":       {0},
+				"allee_effect":           {0},
 			}),
 			ParamsFromUpstream: map[string]simulator.NamedUpstreamConfig{
 				"covariates": {Upstream: "covariates"},
@@ -125,6 +127,7 @@ func buildInnerSimConfig(
 		paramForwarding[rickerName+"/covariate_coefficients"] = []int{base + 2, base + 3, base + 4}
 		paramForwarding[rickerName+"/process_noise_sd"] = []int{base + 5}
 		paramForwarding[llName+"/variance"] = []int{base + 6}
+		paramForwarding[rickerName+"/allee_effect"] = []int{base + 7}
 	}
 
 	return &analysis.SMCInnerSimConfig{
