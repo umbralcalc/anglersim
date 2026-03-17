@@ -5,12 +5,13 @@ import (
 	"math/rand/v2"
 	"testing"
 
+	stdinf "github.com/umbralcalc/stochadex/pkg/inference"
 	"gonum.org/v1/gonum/floats"
 )
 
 func TestUniformPrior(t *testing.T) {
 	rng := rand.New(rand.NewPCG(42, 43))
-	p := &UniformPrior{Lo: -1.0, Hi: 2.0}
+	p := &stdinf.UniformPrior{Lo: -1.0, Hi: 2.0}
 	n := 10000
 	samples := make([]float64, n)
 	for i := range n {
@@ -39,7 +40,7 @@ func TestUniformPrior(t *testing.T) {
 
 func TestTruncatedNormalPrior(t *testing.T) {
 	rng := rand.New(rand.NewPCG(42, 43))
-	p := &TruncatedNormalPrior{Mu: 0.0, Sigma: 1.0, Lo: -3.0, Hi: 3.0}
+	p := &stdinf.TruncatedNormalPrior{Mu: 0.0, Sigma: 1.0, Lo: -3.0, Hi: 3.0}
 	n := 10000
 	samples := make([]float64, n)
 	for i := range n {
@@ -59,7 +60,7 @@ func TestTruncatedNormalPrior(t *testing.T) {
 
 func TestHalfNormalPrior(t *testing.T) {
 	rng := rand.New(rand.NewPCG(42, 43))
-	p := &HalfNormalPrior{Sigma: 1.0}
+	p := &stdinf.HalfNormalPrior{Sigma: 1.0}
 	n := 10000
 	for range n {
 		s := p.Sample(rng)
@@ -78,7 +79,7 @@ func TestHalfNormalPrior(t *testing.T) {
 
 func TestLogNormalPrior(t *testing.T) {
 	rng := rand.New(rand.NewPCG(42, 43))
-	p := &LogNormalPrior{Mu: 0.0, Sigma: 1.0}
+	p := &stdinf.LogNormalPrior{Mu: 0.0, Sigma: 1.0}
 	n := 10000
 	for range n {
 		s := p.Sample(rng)

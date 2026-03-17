@@ -4,21 +4,9 @@ import (
 	"math"
 	"testing"
 
-	"github.com/umbralcalc/anglersim/pkg/data"
 	"github.com/umbralcalc/stochadex/pkg/analysis"
-	"github.com/umbralcalc/stochadex/pkg/general"
 	"github.com/umbralcalc/stochadex/pkg/simulator"
 )
-
-// generateSyntheticData creates a synthetic site time series from known
-// Ricker model parameters, for testing parameter recovery.
-func generateSyntheticData(
-	seed uint64,
-	T int,
-	trueParams []float64,
-) *data.SiteData {
-	return GenerateSyntheticData(seed, T, trueParams)
-}
 
 func TestSMCDecomposed_Harness(t *testing.T) {
 	t.Run(
@@ -27,7 +15,7 @@ func TestSMCDecomposed_Harness(t *testing.T) {
 			trueParams := []float64{
 				0.5, 2.0, 0.0, 0.0, 0.0, 0.15, 0.01,
 			}
-			siteData := generateSyntheticData(123, 15, trueParams)
+			siteData := GenerateSyntheticData(123, 15, trueParams)
 			numParticles := 10
 			nParams := 7
 
@@ -83,7 +71,7 @@ func TestRunSMC_SyntheticRecovery(t *testing.T) {
 		0.01, // obs_noise_var
 	}
 
-	d := generateSyntheticData(123, 30, trueParams)
+	d := GenerateSyntheticData(123, 30, trueParams)
 
 	config := DefaultSMCConfig()
 	config.NumParticles = 100
@@ -136,98 +124,4 @@ func TestRunSMC_SyntheticRecovery(t *testing.T) {
 			}
 		}
 	})
-}
-
-func TestStateSliceIteration_Harness(t *testing.T) {
-	t.Run(
-		"test that StateSliceIteration runs with harnesses",
-		func(t *testing.T) {
-			settings := &simulator.Settings{
-				Iterations: []simulator.IterationSettings{
-					{
-						Name: "upstream",
-						Params: simulator.NewParams(map[string][]float64{
-							"param_values": {1.0, 2.0, 3.0, 4.0, 5.0},
-						}),
-						InitStateValues:   []float64{1.0, 2.0, 3.0, 4.0, 5.0},
-						StateWidth:        5,
-						StateHistoryDepth: 2,
-						Seed:              0,
-					},
-					{
-						Name: "slice",
-						Params: simulator.NewParams(map[string][]float64{
-							"offset":        {1},
-							"width":         {3},
-							"latest_values": {1.0, 2.0, 3.0, 4.0, 5.0},
-						}),
-						ParamsFromUpstream: map[string]simulator.UpstreamConfig{
-							"latest_values": {Upstream: 0},
-						},
-						InitStateValues:   []float64{2.0, 3.0, 4.0},
-						StateWidth:        3,
-						StateHistoryDepth: 1,
-						Seed:              0,
-					},
-				},
-				InitTimeValue:         0.0,
-				TimestepsHistoryDepth: 2,
-			}
-			settings.Init()
-
-			iterations := []simulator.Iteration{
-				&general.ParamValuesIteration{},
-				&StateSliceIteration{},
-			}
-			implementations := &simulator.Implementations{
-				Iterations:      iterations,
-				OutputCondition: &simulator.EveryStepOutputCondition{},
-				OutputFunction:  &simulator.NilOutputFunction{},
-				TerminationCondition: &simulator.NumberOfStepsTerminationCondition{
-					MaxNumberOfSteps: 3,
-				},
-				TimestepFunction: &simulator.ConstantTimestepFunction{Stepsize: 1.0},
-			}
-			if err := simulator.RunWithHarnesses(settings, implementations); err != nil {
-				t.Errorf("test harness failed: %v", err)
-			}
-		},
-	)
-}
-
-func TestLogSumExp(t *testing.T) {
-	result := logSumExp([]float64{1.0, 2.0, 3.0})
-	expected := 3.0 + math.Log(1+math.Exp(-1)+math.Exp(-2))
-	if math.Abs(result-expected) > 1e-10 {
-		t.Errorf("logSumExp = %.10f, expected %.10f", result, expected)
-	}
-
-	result = logSumExp([]float64{math.Inf(-1), math.Inf(-1)})
-	if !math.IsInf(result, -1) {
-		t.Errorf("logSumExp of all -Inf should be -Inf, got %f", result)
-	}
-}
-
-func TestCholeskyDecomp(t *testing.T) {
-	L := choleskyDecomp([]float64{1, 0, 0, 1}, 2)
-	if L == nil {
-		t.Fatal("cholesky of identity returned nil")
-	}
-	if math.Abs(L[0]-1) > 1e-10 || math.Abs(L[3]-1) > 1e-10 {
-		t.Errorf("cholesky of identity: L = %v", L)
-	}
-
-	L = choleskyDecomp([]float64{1, 0, 0, -1}, 2)
-	if L != nil {
-		t.Error("expected nil for non-PD matrix")
-	}
-}
-
-func TestWeightedQuantiles(t *testing.T) {
-	values := []float64{1, 2, 3, 4, 5}
-	weights := []float64{0.2, 0.2, 0.2, 0.2, 0.2}
-	q := WeightedQuantiles(values, weights, []float64{0.5})
-	if q[0] != 3 {
-		t.Errorf("median = %f, expected 3", q[0])
-	}
 }

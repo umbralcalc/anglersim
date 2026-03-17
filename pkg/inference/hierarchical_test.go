@@ -4,6 +4,8 @@ import (
 	"math"
 	"math/rand/v2"
 	"testing"
+
+	stdinf "github.com/umbralcalc/stochadex/pkg/inference"
 )
 
 func TestEstimateHyperParams(t *testing.T) {
@@ -138,34 +140,34 @@ func TestHierarchicalPriors(t *testing.T) {
 
 		// Check non-covariate priors are unchanged
 		// growth_rate (index 0)
-		if priors[0].(*TruncatedNormalPrior).Mu != defaults[0].(*TruncatedNormalPrior).Mu {
+		if priors[0].(*stdinf.TruncatedNormalPrior).Mu != defaults[0].(*stdinf.TruncatedNormalPrior).Mu {
 			t.Error("growth_rate prior should be unchanged")
 		}
 		// density_dependence (index 1)
-		if priors[1].(*LogNormalPrior).Mu != defaults[1].(*LogNormalPrior).Mu {
+		if priors[1].(*stdinf.LogNormalPrior).Mu != defaults[1].(*stdinf.LogNormalPrior).Mu {
 			t.Error("density_dependence prior should be unchanged")
 		}
 		// process_noise_sd (index 5)
-		if priors[5].(*HalfNormalPrior).Sigma != defaults[5].(*HalfNormalPrior).Sigma {
+		if priors[5].(*stdinf.HalfNormalPrior).Sigma != defaults[5].(*stdinf.HalfNormalPrior).Sigma {
 			t.Error("process_noise_sd prior should be unchanged")
 		}
 		// obs_noise_var (index 6)
-		if priors[6].(*LogNormalPrior).Mu != defaults[6].(*LogNormalPrior).Mu {
+		if priors[6].(*stdinf.LogNormalPrior).Mu != defaults[6].(*stdinf.LogNormalPrior).Mu {
 			t.Error("obs_noise_var prior should be unchanged")
 		}
 
 		// Check covariate priors are updated
-		flowPrior := priors[2].(*TruncatedNormalPrior)
+		flowPrior := priors[2].(*stdinf.TruncatedNormalPrior)
 		if flowPrior.Mu != hp.MuBetaFlow || flowPrior.Sigma != hp.SigmaBetaFlow {
 			t.Errorf("beta_flow prior: got mu=%.4f sigma=%.4f, want mu=%.4f sigma=%.4f",
 				flowPrior.Mu, flowPrior.Sigma, hp.MuBetaFlow, hp.SigmaBetaFlow)
 		}
-		tempPrior := priors[3].(*TruncatedNormalPrior)
+		tempPrior := priors[3].(*stdinf.TruncatedNormalPrior)
 		if tempPrior.Mu != hp.MuBetaTemp || tempPrior.Sigma != hp.SigmaBetaTemp {
 			t.Errorf("beta_temp prior: got mu=%.4f sigma=%.4f, want mu=%.4f sigma=%.4f",
 				tempPrior.Mu, tempPrior.Sigma, hp.MuBetaTemp, hp.SigmaBetaTemp)
 		}
-		doPrior := priors[4].(*TruncatedNormalPrior)
+		doPrior := priors[4].(*stdinf.TruncatedNormalPrior)
 		if doPrior.Mu != hp.MuBetaDO || doPrior.Sigma != hp.SigmaBetaDO {
 			t.Errorf("beta_do prior: got mu=%.4f sigma=%.4f, want mu=%.4f sigma=%.4f",
 				doPrior.Mu, doPrior.Sigma, hp.MuBetaDO, hp.SigmaBetaDO)

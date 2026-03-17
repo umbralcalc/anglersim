@@ -13,6 +13,7 @@ import (
 
 	"github.com/umbralcalc/anglersim/pkg/data"
 	"github.com/umbralcalc/anglersim/pkg/inference"
+	stdinf "github.com/umbralcalc/stochadex/pkg/inference"
 )
 
 func main() {
@@ -51,7 +52,7 @@ func main() {
 	type result struct {
 		siteID   int
 		numYears int
-		res      *inference.SMCResult
+		res      *stdinf.SMCResult
 		err      error
 	}
 

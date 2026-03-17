@@ -13,6 +13,7 @@ import (
 
 	"github.com/umbralcalc/anglersim/pkg/data"
 	"github.com/umbralcalc/anglersim/pkg/inference"
+	stdinf "github.com/umbralcalc/stochadex/pkg/inference"
 )
 
 func main() {
@@ -120,7 +121,7 @@ func main() {
 type siteResult struct {
 	siteID   int
 	numYears int
-	res      *inference.SMCResult
+	res      *stdinf.SMCResult
 	err      error
 }
 
@@ -131,7 +132,7 @@ var results []siteResult
 func fitAllSites(
 	siteIDs []int,
 	allSites map[int]*data.SiteData,
-	priors []inference.Prior,
+	priors []stdinf.Prior,
 	numParticles, numRounds int,
 	baseSeed uint64,
 	workers int,

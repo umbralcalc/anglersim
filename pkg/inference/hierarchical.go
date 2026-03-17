@@ -5,6 +5,8 @@ import (
 	"math"
 	"os"
 	"strconv"
+
+	stdinf "github.com/umbralcalc/stochadex/pkg/inference"
 )
 
 // SitePosteriorSummary holds the Stage 1 posterior for one site.
@@ -190,10 +192,10 @@ func estimateNormalHyper(sites []SitePosteriorSummary, paramIdx int) (float64, f
 // the covariate effects (beta_flow, beta_temp, beta_do) use informative
 // priors derived from population-level hyperparameters. All other priors
 // remain at their defaults.
-func HierarchicalPriors(hp *HyperParams) []Prior {
+func HierarchicalPriors(hp *HyperParams) []stdinf.Prior {
 	priors := DefaultRickerPriors()
-	priors[2] = &TruncatedNormalPrior{Mu: hp.MuBetaFlow, Sigma: hp.SigmaBetaFlow, Lo: -2.0, Hi: 2.0}
-	priors[3] = &TruncatedNormalPrior{Mu: hp.MuBetaTemp, Sigma: hp.SigmaBetaTemp, Lo: -2.0, Hi: 2.0}
-	priors[4] = &TruncatedNormalPrior{Mu: hp.MuBetaDO, Sigma: hp.SigmaBetaDO, Lo: -2.0, Hi: 2.0}
+	priors[2] = &stdinf.TruncatedNormalPrior{Mu: hp.MuBetaFlow, Sigma: hp.SigmaBetaFlow, Lo: -2.0, Hi: 2.0}
+	priors[3] = &stdinf.TruncatedNormalPrior{Mu: hp.MuBetaTemp, Sigma: hp.SigmaBetaTemp, Lo: -2.0, Hi: 2.0}
+	priors[4] = &stdinf.TruncatedNormalPrior{Mu: hp.MuBetaDO, Sigma: hp.SigmaBetaDO, Lo: -2.0, Hi: 2.0}
 	return priors
 }
