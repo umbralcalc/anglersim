@@ -525,6 +525,7 @@ func joinCovariates(
 	}
 
 	flowStats := make(map[yearKey]data.AnnualFlowStats)
+	seasonalFlowStats := make(map[yearKey]data.SeasonalFlowStats)
 	processedMeasures := make(map[string]bool)
 	for _, m := range flowMappings {
 		if m.measureID == "" || processedMeasures[m.measureID] {
@@ -541,6 +542,9 @@ func joinCovariates(
 		for _, s := range data.AggregateAnnualFlow(readings) {
 			flowStats[yearKey{m.measureID, s.Year}] = s
 		}
+		for _, s := range data.AggregateSeasonalFlow(readings) {
+			seasonalFlowStats[yearKey{m.measureID, s.Year}] = s
+		}
 	}
 
 	// Build WQ stats lookup: (notation, year) -> stats
@@ -552,6 +556,7 @@ func joinCovariates(
 	}
 
 	wqStats := make(map[yearKey]data.AnnualWQStats)
+	seasonalWQStats := make(map[yearKey]data.SeasonalWQStats)
 	processedNotations := make(map[string]bool)
 	for _, m := range wqMappings {
 		if m.notation == "" || processedNotations[m.notation] {
@@ -567,6 +572,9 @@ func joinCovariates(
 
 		for _, s := range data.AggregateAnnualWQ(tempObs, doObs, nh3Obs, bodObs) {
 			wqStats[yearKey{m.notation, s.Year}] = s
+		}
+		for _, s := range data.AggregateSeasonalWQ(tempObs, doObs) {
+			seasonalWQStats[yearKey{m.notation, s.Year}] = s
 		}
 	}
 
@@ -608,7 +616,9 @@ func joinCovariates(
 
 	flowCols := []string{"MEAN_FLOW", "MAX_FLOW", "MIN_FLOW", "Q10_FLOW", "Q90_FLOW", "FLOW_NUM_DAYS"}
 	wqCols := []string{"MEAN_TEMP", "MAX_TEMP", "MEAN_DO", "MIN_DO", "MEAN_AMMONIA", "MAX_AMMONIA", "MEAN_BOD", "MAX_BOD"}
+	seasonalCols := []string{"SUMMER_MEAN_FLOW", "SUMMER_FLOW_DAYS", "SUMMER_MEAN_TEMP", "SUMMER_TEMP_SAMPLES", "WINTER_MEAN_DO", "WINTER_DO_SAMPLES"}
 	allNewCols := append(flowCols, wqCols...)
+	allNewCols = append(allNewCols, seasonalCols...)
 	w.Write(append(panelHeaders, allNewCols...))
 
 	flowJoined := 0
@@ -617,6 +627,7 @@ func joinCovariates(
 
 	emptyFlow := make([]string, len(flowCols))
 	emptyWQ := make([]string, len(wqCols))
+	emptySeasonal := make([]string, len(seasonalCols))
 
 	for _, row := range panelRows {
 		siteID, _ := strconv.Atoi(row[pidx["SITE_ID"]])
@@ -662,8 +673,40 @@ func joinCovariates(
 			wqVals = emptyWQ
 		}
 
+		// Seasonal columns
+		var seasonalVals []string
+		mid := siteToMeasure[siteID]
+		notation := siteToNotation[siteID]
+		if mid != "" || notation != "" {
+			sfFlow := ""
+			sfDays := ""
+			if mid != "" {
+				if s, ok := seasonalFlowStats[yearKey{mid, year}]; ok {
+					sfFlow = fmt.Sprintf("%.6f", s.SummerMeanFlow)
+					sfDays = strconv.Itoa(s.SummerNumDays)
+				}
+			}
+			sfTemp := ""
+			sfTempN := ""
+			sfDO := ""
+			sfDON := ""
+			if notation != "" {
+				if s, ok := seasonalWQStats[yearKey{notation, year}]; ok {
+					sfTemp = fmtNaN(s.SummerMeanTemp)
+					sfTempN = strconv.Itoa(s.SummerNumTemp)
+					sfDO = fmtNaN(s.WinterMeanDO)
+					sfDON = strconv.Itoa(s.WinterNumDO)
+				}
+			}
+			seasonalVals = []string{sfFlow, sfDays, sfTemp, sfTempN, sfDO, sfDON}
+		}
+		if seasonalVals == nil {
+			seasonalVals = emptySeasonal
+		}
+
 		outRow := append(row, flowVals...)
 		outRow = append(outRow, wqVals...)
+		outRow = append(outRow, seasonalVals...)
 		w.Write(outRow)
 		total++
 	}

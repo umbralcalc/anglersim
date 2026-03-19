@@ -372,6 +372,91 @@ func AggregateAnnualWQ(tempObs, doObs, nh3Obs, bodObs []WQObservation) []AnnualW
 	return stats
 }
 
+// SeasonalWQStats holds seasonal water quality statistics for one year.
+type SeasonalWQStats struct {
+	Year           int
+	SummerMeanTemp float64 // mean water temp Jun-Sep (°C)
+	SummerNumTemp  int
+	WinterMeanDO   float64 // mean DO Dec(Y-1)-Feb(Y) (mg/l)
+	WinterNumDO    int
+}
+
+// AggregateSeasonalWQ computes seasonal water quality stats:
+// - Summer mean temperature (Jun-Sep)
+// - Winter mean dissolved oxygen (Dec of previous year through Feb)
+func AggregateSeasonalWQ(tempObs, doObs []WQObservation) []SeasonalWQStats {
+	// Summer temp: group by calendar year, filter Jun-Sep
+	summerTemp := make(map[int][]float64)
+	for _, o := range tempObs {
+		if len(o.Date) < 7 {
+			continue
+		}
+		year, _ := strconv.Atoi(o.Date[:4])
+		month, _ := strconv.Atoi(o.Date[5:7])
+		if year > 0 && month >= 6 && month <= 9 {
+			summerTemp[year] = append(summerTemp[year], o.Value)
+		}
+	}
+
+	// Winter DO: Dec of year Y assigned to winter Y+1; Jan-Feb of year Y assigned to winter Y
+	winterDO := make(map[int][]float64)
+	for _, o := range doObs {
+		if len(o.Date) < 7 {
+			continue
+		}
+		year, _ := strconv.Atoi(o.Date[:4])
+		month, _ := strconv.Atoi(o.Date[5:7])
+		if year <= 0 {
+			continue
+		}
+		switch {
+		case month == 12:
+			winterDO[year+1] = append(winterDO[year+1], o.Value)
+		case month <= 2:
+			winterDO[year] = append(winterDO[year], o.Value)
+		}
+	}
+
+	// Collect all years that have at least one stat
+	years := make(map[int]bool)
+	for y := range summerTemp {
+		years[y] = true
+	}
+	for y := range winterDO {
+		years[y] = true
+	}
+
+	sortedYears := make([]int, 0, len(years))
+	for y := range years {
+		sortedYears = append(sortedYears, y)
+	}
+	sort.Ints(sortedYears)
+
+	meanOf := func(vals []float64) float64 {
+		if len(vals) == 0 {
+			return math.NaN()
+		}
+		sum := 0.0
+		for _, v := range vals {
+			sum += v
+		}
+		return sum / float64(len(vals))
+	}
+
+	stats := make([]SeasonalWQStats, len(sortedYears))
+	for i, year := range sortedYears {
+		stats[i] = SeasonalWQStats{
+			Year:           year,
+			SummerMeanTemp: meanOf(summerTemp[year]),
+			SummerNumTemp:  len(summerTemp[year]),
+			WinterMeanDO:   meanOf(winterDO[year]),
+			WinterNumDO:    len(winterDO[year]),
+		}
+	}
+
+	return stats
+}
+
 // AnnualWQToDataFrame converts annual water quality stats to a gota dataframe.
 func AnnualWQToDataFrame(stats []AnnualWQStats) dataframe.DataFrame {
 	n := len(stats)

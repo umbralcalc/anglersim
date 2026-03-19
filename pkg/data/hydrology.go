@@ -353,6 +353,52 @@ func AggregateAnnualFlow(readings []HydrologyReading) []AnnualFlowStats {
 	return stats
 }
 
+// SeasonalFlowStats holds summer flow statistics for one year.
+type SeasonalFlowStats struct {
+	Year           int
+	SummerMeanFlow float64 // mean daily flow Jun-Sep (m³/s)
+	SummerNumDays  int     // days with readings in Jun-Sep
+}
+
+// AggregateSeasonalFlow computes summer (Jun-Sep) mean flow from daily readings.
+func AggregateSeasonalFlow(readings []HydrologyReading) []SeasonalFlowStats {
+	byYear := make(map[int][]float64)
+	for _, r := range readings {
+		if len(r.Date) < 10 {
+			continue
+		}
+		year := 0
+		month := 0
+		fmt.Sscanf(r.Date[:4], "%d", &year)
+		fmt.Sscanf(r.Date[5:7], "%d", &month)
+		if year > 0 && month >= 6 && month <= 9 {
+			byYear[year] = append(byYear[year], r.Value)
+		}
+	}
+
+	years := make([]int, 0, len(byYear))
+	for y := range byYear {
+		years = append(years, y)
+	}
+	sort.Ints(years)
+
+	stats := make([]SeasonalFlowStats, len(years))
+	for i, year := range years {
+		vals := byYear[year]
+		sum := 0.0
+		for _, v := range vals {
+			sum += v
+		}
+		stats[i] = SeasonalFlowStats{
+			Year:           year,
+			SummerMeanFlow: sum / float64(len(vals)),
+			SummerNumDays:  len(vals),
+		}
+	}
+
+	return stats
+}
+
 // AnnualFlowToDataFrame converts annual flow stats to a gota dataframe.
 func AnnualFlowToDataFrame(stats []AnnualFlowStats) dataframe.DataFrame {
 	n := len(stats)

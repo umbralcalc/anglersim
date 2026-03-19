@@ -90,7 +90,7 @@ Both APIs: no auth required, spatial search by lat/long + radius (km), matched t
 ## Supplementary Data Sources (not yet integrated)
 
 - **Rod Catch Returns:** Salmon & sea trout angling catch by river. GOV.UK downloads (ODS/CSV). Links to NFPD by river/catchment name. https://www.gov.uk/government/collections/salmonid-and-freshwater-fisheries-statistics
-- **NRFA (river flow):** Daily mean flows from ~1,500 stations. `nrfa.ceh.ac.uk`. Links via spatial proximity. (EA Hydrology API now provides similar data.)
+- **WFD Fish Classifications:** Ecological quality ratios, status classes. Catchment Data Explorer. Links by WFD waterbody ID.
 - **Fish stocking records:** Not public — requires FOI request to EA.
 - **Policy/regulation timeline:** No machine-readable source — needs manual curation from legislation.gov.uk.
 
@@ -165,6 +165,10 @@ Log-likelihoods are extracted from the embedded output via indexed upstream on t
 11. ✅ Hierarchical empirical Bayes model (pkg/inference/hierarchical.go, cmd/batchhierarchical)
 12. ✅ Policy simulation scenarios (pkg/simulate, cmd/simulate)
 13. ✅ First policy simulation run — all 7 scenarios × 790 sites
+14. ✅ Allee effect added to Ricker model (depensatory growth at low density)
+15. ✅ Regional breakdown of scenario impacts (using EA AREA from panel data)
+16. ✅ Seasonal covariate experiment — tested and reverted (see Key Results)
+17. ✅ Rod catch correlation analysis — no signal found (see Key Results)
 
 ## Key Results
 
@@ -181,25 +185,58 @@ Log-likelihoods are extracted from the embedded output via indexed upstream on t
 ### Policy Scenario Results (20yr projection, 790 sites)
 | Scenario | Med density Δ | Sites declining | Critical (>50% loss) | Mean extinction P |
 |----------|--------------|-----------------|---------------------|-------------------|
-| baseline | +0.4% | 49.2% | 8.6% | 0.051 |
-| climate_1c | -8.8% | 61.3% | 12.9% | 0.066 |
-| climate_2c | -17.5% | 70.3% | 21.1% | 0.084 |
-| low_abstraction | +0.2% | 49.4% | 9.1% | 0.052 |
-| drought | +2.1% | 47.3% | 8.1% | 0.049 |
-| wq_improvement | +0.4% | 49.2% | 8.7% | 0.051 |
-| combined_2c_oxy | -17.4% | 70.1% | 21.3% | 0.084 |
+| baseline | -8.6% | 59.4% | 17.6% | 0.059 |
+| climate +1°C | -11.6% | 59.5% | 19.4% | 0.063 |
+| climate +2°C | -14.2% | 61.3% | 22.8% | 0.073 |
+| low abstraction (+15% flow) | -8.4% | 58.2% | 17.5% | 0.059 |
+| drought (-25% flow) | -10.3% | 60.6% | 17.7% | 0.059 |
+| water quality (+15% DO) | -8.8% | 59.4% | 17.6% | 0.059 |
+| combined +2°C & +15% DO | -14.2% | 61.3% | 22.8% | 0.074 |
 
-**Key finding:** Temperature is the dominant driver. Flow and DO interventions have negligible effect at the population level — their covariate effects are near zero in the hierarchical model. Combined mitigation (+15% DO) does not offset +2°C warming.
+The model includes an Allee effect (depensatory growth at low density), which prevents unrealistic recovery projections for near-zero populations. Even the baseline scenario projects a -8.6% median decline, consistent with observed downward trends in the survey data. **Temperature remains the dominant driver**, adding ~6pp of additional decline under +2°C warming. Flow and dissolved oxygen interventions remain negligible at the population level.
+
+### Regional Vulnerability (climate +2°C scenario)
+| Region | Sites | Med density Δ | Critical (>50% loss) | Mean extinction P |
+|--------|-------|--------------|---------------------|-------------------|
+| Kent & South London | 7 | -79.0% | 71.4% | 0.263 |
+| West | 34 | -33.4% | 38.2% | 0.139 |
+| Wessex | 37 | -32.6% | 40.5% | 0.127 |
+| Eastern | 39 | -31.1% | 41.0% | 0.116 |
+| Northern | 16 | -24.4% | 31.2% | 0.108 |
+| North | 153 | -17.2% | 19.0% | 0.047 |
+| Yorkshire | 128 | -14.8% | 21.1% | 0.125 |
+| Devon & Cornwall | 206 | -4.6% | 16.5% | 0.021 |
+| North East | 71 | -5.5% | 19.7% | 0.088 |
+
+Kent & South London (7 sites) faces the most severe projected decline. The West, Wessex, and Eastern regions show >30% median losses with 38-41% of sites in critical decline. Devon & Cornwall — the largest region — is the most resilient with only -4.6% median change under +2°C.
+
+### Seasonal Covariate Experiment
+Tested replacing annual means with seasonal stats: summer mean flow (Jun–Sep), summer mean temp (Jun–Sep), winter mean DO (Dec–Feb). Results:
+- Flow/DO effects remained negligible (~0.01) — no improvement over annual means
+- Temperature effect flipped to slightly positive (mu_temp=+0.007), making warming scenarios show *less* decline than baseline — ecologically implausible for brown trout
+- Confirms the annual mean temperature signal captures correlated long-term trends, not direct thermal stress
+- Reverted to annual means; seasonal aggregation functions (`AggregateSeasonalFlow`, `AggregateSeasonalWQ`) and panel CSV columns retained for future use
+
+### Rod Catch Correlation Analysis
+Matched 255 NFPD sites to 46 rod catch rivers (GOV.UK data, 2008–2024) using river names from SITE_PARENT_NAME. Tested whether angling harvest predicts population trends across 1,421 site-year observations:
+- Pooled correlation r=0.14 (river-size confounding only)
+- Within-site median Spearman r=0.007 — effectively zero, 50/50 positive/negative
+- First-differenced r=0.03, p=0.39 — no predictive signal in year-over-year changes
+- Lagged (harvest→next year density) r=0.04, p=0.27 — no depletion signal
+- Rod catch reflects angler effort/access, not site-level fishing pressure; >90% catch-and-release makes actual harvest negligible
+- Data and scripts in `dat/rod_catch/`; not incorporated as a model covariate
 
 **Caveats:**
-- Near-zero flow/DO effects may reflect data limitations (annual aggregation, covariate station matching noise) rather than ecological irrelevance
+- Near-zero flow/DO effects persist under both annual and seasonal covariate resolution — the limitation is fundamental to the data (sparse WQ sampling, station matching noise), not fixable by temporal aggregation
 - Model fitted on density (fish/m²) from electrofishing surveys — habitat loss wouldn't show up
-- Temperature signal may partly capture correlated time trends (warming + other long-term changes)
+- Temperature signal likely captures correlated time trends (warming + other long-term changes) rather than direct thermal stress — confirmed by seasonal experiment
+- Regions with few sites (< 20) should be interpreted with caution
+- The Allee effect prior (LogNormal) is weakly informative — the strength of depensatory growth is estimated per site but may be poorly identified at sites with limited low-density observations
 
 ## Next Steps
-- Regional breakdown of scenario impacts (using EA AREA from panel data)
-- Seasonal covariate resolution (if data permits) to improve flow/DO signal
-- Stocking/policy timeline integration for counterfactual analysis
+- Stocking/policy timeline integration for counterfactual analysis (blocked: stocking records require FOI, policy timeline needs manual curation)
+- Size-structured modelling using 7.5M individual length measurements (unused)
+- Multi-species comparison (bullhead, stone loach, minnow, roach)
 
 ---
 

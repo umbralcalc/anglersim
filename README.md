@@ -183,11 +183,26 @@ The model includes an Allee effect (depensatory growth at low density), which pr
 
 Kent & South London (7 sites) faces the most severe projected decline. The West, Wessex, and Eastern regions show >30% median losses with 38-41% of sites in critical decline. Devon & Cornwall — the largest region — is the most resilient with only -4.6% median change under +2°C.
 
+### Seasonal covariate experiment
+
+Seasonal aggregation was tested as an alternative to annual means: summer mean flow (Jun–Sep), summer mean temp (Jun–Sep), and winter mean DO (Dec–Feb). The seasonal covariates did not improve the flow/DO signal (effects remained ~0.01) and the temperature effect became slightly positive — implying warming *reduces* decline, which is ecologically implausible for brown trout. This confirms that the annual mean temperature signal is primarily capturing correlated long-term trends (warming + other changes) rather than direct thermal stress. The model retains annual means as covariates; seasonal aggregation functions remain available in the codebase (`AggregateSeasonalFlow`, `AggregateSeasonalWQ`) and the panel CSV includes seasonal columns for future use.
+
+### Rod catch correlation analysis
+
+Rod catch returns (GOV.UK supplementary data tables, 2008–2024) were matched to NFPD electrofishing sites to test whether angling harvest correlates with population trends. 255 NFPD sites were matched to 46 rod catch rivers using river names extracted from NFPD site parent names. Results across 1,421 site-year observations:
+
+- **Pooled correlation:** r=0.14 (driven by river-size confounding — bigger rivers have both more anglers and more fish)
+- **Within-site correlation:** median Spearman r=0.007; 50/50 positive vs negative; 7% significant at p<0.05 (chance level)
+- **First-differenced:** r=0.03, p=0.39 — year-over-year changes in rod catch do not predict changes in density
+- **Lagged (harvest → next year):** r=0.04, p=0.27 — no depletion signal
+
+Rod catch returns reflect angler effort and access rather than site-level fishing pressure. With >90% catch-and-release in recent years, actual harvest is a negligible fraction of reported catch. Rod catch is not incorporated as a model covariate.
+
 ### Caveats
 
-- Near-zero flow/DO effects may reflect data limitations (annual aggregation, covariate station matching noise) rather than ecological irrelevance
+- Near-zero flow/DO effects persist under both annual and seasonal covariate resolution, suggesting the limitation is fundamental to the data (sparse WQ sampling, covariate station matching noise) rather than fixable by temporal aggregation
 - Model fitted on density (fish/m²) from electrofishing surveys — habitat loss wouldn't show up
-- Temperature signal may partly capture correlated time trends (warming + other long-term changes)
+- Temperature signal likely captures correlated time trends (warming + other long-term changes) rather than direct thermal stress — confirmed by seasonal experiment where summer-specific temps lost the signal
 - Regions with few sites (< 20) should be interpreted with caution
 - The Allee effect prior (LogNormal) is weakly informative — the strength of depensatory growth is estimated per site but may be poorly identified at sites with limited low-density observations
 
