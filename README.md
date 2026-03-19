@@ -1,6 +1,6 @@
 # anglersim
 
-Evaluating the impact of sustainability policies for fishing on freshwater fish populations in the UK using data-driven simulations.
+Evaluating the impact of sustainability policies on freshwater fish populations in the UK using data-driven simulations.
 
 ## Data assessment
 
