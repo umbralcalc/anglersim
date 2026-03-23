@@ -2,6 +2,8 @@
 
 Evaluating the impact of sustainability policies on freshwater fish populations in the UK using data-driven simulations.
 
+This project was built using the [stochadex framework](https://github.com/umbralcalc/stochadex).
+
 ## Data assessment
 
 ### NFPD (National Fish Population Database)
