@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/go-gota/gota v0.12.0
-	github.com/umbralcalc/stochadex v0.0.0-20260317065257-feffe6b6ff38
+	github.com/umbralcalc/stochadex v0.0.0-20260329101819-139d2f8ca54e
 	gonum.org/v1/gonum v0.17.0
 )
 
