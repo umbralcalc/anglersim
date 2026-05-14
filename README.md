@@ -35,7 +35,7 @@ The density-only side of the data is rich. Where it falls down is at the join wi
 
 The reason is structural: the EA Hydrology gauging network covers most rivers, but the Water Quality F6 sampling-point network is much sparser. Even with nearest-station matching (`cmd/fetchcovariates`), most site-years are unmatchable to a real WQ measurement.
 
-A climate-effects model trained on all three EA covariates therefore has ~19 effective sites. A flow-only model has ~124. The full 790-site fits previously published in this repo were obtained from an earlier version of the data loader that silently zero-filled missing covariate values — see *Historical artifacts* below — and should not be used as scientific results.
+A climate-effects model trained on all three EA covariates therefore has ~19 effective sites. A flow-only model has ~124.
 
 ### Integrated environmental covariates
 
@@ -113,9 +113,9 @@ go run ./cmd/fetchcovariates \
   --out dat/brown_trout_panel_with_covariates.csv
 ```
 
-This is slow (API rate-limited) but caches results in `dat/hydrology/` and `dat/water_quality/`. The output marks rows with missing covariates as empty (not zero) — the panel loader (`pkg/data/panel.go`) now drops site-years with any required covariate missing, so downstream fits only see real measurements.
+This is slow (API rate-limited) but caches results in `dat/hydrology/` and `dat/water_quality/`. The output marks rows with missing covariates as empty (not zero) — the panel loader (`pkg/data/panel.go`) drops site-years with any required covariate missing, so downstream fits only see real measurements.
 
-**3. Batch SMC inference** — fit the stochastic Ricker model independently to every qualifying site using Sequential Monte Carlo. With the patched loader, `--min-years` (default 10) now means "≥N years of fully-covariated data per site" — site-years with any required covariate missing have already been dropped by `LoadAllSiteTimeSeries`.
+**3. Batch SMC inference** — fit the stochastic Ricker model independently to every qualifying site using Sequential Monte Carlo. `--min-years` (default 10) means "≥N years of fully-covariated data per site" — site-years with any required covariate missing have already been dropped by `LoadAllSiteTimeSeries`.
 
 ```bash
 go run ./cmd/batchsmc \
@@ -124,7 +124,7 @@ go run ./cmd/batchsmc \
   --workers 4 --particles 500 --rounds 3 --min-years 10
 ```
 
-Produces per-site posterior means, standard deviations, and log marginal likelihoods. With the default filter and the current EA Water Quality coverage, this fits ~19 sites — not 790.
+Produces per-site posterior means, standard deviations, and log marginal likelihoods. With the default filter and the current EA Water Quality coverage, this fits ~19 sites.
 
 **4. Hierarchical empirical Bayes** — use the Stage 1 posteriors to estimate population-level hyperparameters for covariate effects, then re-fit all sites under hierarchical priors. With only ~19 eligible sites the pool is small; per-site posteriors dominate and the EB shrinkage is weak.
 
@@ -183,19 +183,11 @@ go run ./cmd/fit \
 - **Quantitative "+1°C / +2°C costs X% density" claims.** With essentially no within-site temperature signal at most sites — and only 19 sites with enough WQ coverage to contribute information — the temperature coefficient cannot be identified from these data. Any specific magnitude is noise.
 - **Quantitative DO or BOD interventions.** Same coverage problem.
 
-### Why the original 790-site climate fit was misleading
-
-The earlier version of `pkg/data/panel.go` used a `parseFloatDefault` helper that returned `0.0` for any missing or unparseable covariate value, with no warning. Because 97.6% of brown trout panel rows have at least one missing covariate, the SMC was being trained on a panel where most temperature, flow and DO observations were literally the number zero. The per-site posteriors correctly returned ~noise (the likelihood was invariant to the covariate effects), but the iterative empirical Bayes step then pooled across all 790 noise estimates. Iterative shrinkage drove the inferred `sigma_beta_*` to the 0.01 floor, locking every site to the same `mu_beta_*`, which was itself residual sampling noise.
-
-When projected forward over a 30-year horizon under climate scenarios, that locked-in `mu_beta_temp` produced visible but spurious population trajectories — including, depending on the random sign of the noise, the implausible "warming increases brown trout density" pattern seen in the most recent runs.
-
-The loader has been patched to propagate `NaN` and the batch commands now drop incomplete site-years and filter on covariate coverage by default, so this can't silently happen again.
-
 ### Held-out validation
 
 Median RMSE on a 3-year holdout is 0.72 log-units across 573 sites; mean 90% interval coverage is 0.82 (median 1.00). 76 of 573 sites have <50% coverage and are flagged in the notebook. The model is a useful population descriptor but most of the held-out predictive width comes from process noise; the validation does not distinguish a model with non-zero covariate effects from one with covariate effects pinned at zero.
 
-### Rod catch correlation analysis (unchanged)
+### Rod catch correlation analysis
 
 Rod catch returns (GOV.UK supplementary data tables, 2008–2024) were matched to NFPD electrofishing sites to test whether angling harvest correlates with population trends. 255 NFPD sites were matched to 46 rod catch rivers using river names extracted from NFPD site parent names. Results across 1,421 site-year observations:
 
@@ -212,12 +204,6 @@ Rod catch returns reflect angler effort and access rather than site-level fishin
 2. **Non-linear thermal response.** A linear `beta_temp × temp` term cannot represent a thermal optimum (cool → tolerable → lethal). With richer data, a quadratic term or a piecewise-linear above/below preferred-range model would be the right form.
 3. **A design that breaks the warming-vs-recovery confound.** UK rivers recovered from industrial pollution over much of the panel period, so a naïve year-on-year fit will conflate "warming" with "everything else improved." A difference-in-differences design or a pre/post split on a known intervention would help.
 4. **A richer set of sites for the hierarchical pool.** The current 19-site bottleneck is what makes empirical Bayes useless here. Loosening the species filter, or running a multi-species hierarchical model, would increase the pool.
-
-## Historical artifacts in `dat/`
-
-The CSVs currently checked into `dat/` (`batch_smc_results.csv`, `hierarchical_results.csv`, `projections.csv`, `projections_summary.csv`, `regional_summary.csv`, `validation_*.csv`) were produced by the original pipeline before the silent-zero-fill loader bug was identified and fixed. They cover all 790 sites — including the 663 sites that were "fitted" against all-zero covariates. They are kept in the repository for reference and reproducibility but **should not be cited as scientific results**.
-
-The hyperparameter comment at the top of the old `hierarchical_results.csv` (`mu_temp=+0.006855 sigma_temp=0.014659 mu_do=-0.012116 sigma_do=0.013581`) is the visible signature of the runaway-shrinkage failure described above: tiny sigma, near-zero mu of arbitrary sign. Re-running the patched pipeline against the same panel produces a much smaller fit (~19 sites, no hierarchical pooling worth the name, no statistically meaningful climate coefficients).
 
 ## Caveats
 
