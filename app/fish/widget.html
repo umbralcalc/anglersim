@@ -77,8 +77,8 @@
 <script>
 (function () {
     var widget = document.getElementById('dexetera-fish');
-    var RUNTIME_BASE = './runtime/';
-    var WASM_URL = './src/main.wasm';
+    var RUNTIME_BASE = 'https://pub-afdb1348ec964ca5b530aa758c0bdc56.r2.dev/assets/dexetera/runtime/';
+    var WASM_URL = 'https://pub-afdb1348ec964ca5b530aa758c0bdc56.r2.dev/assets/dexetera/widgets/fish/main.wasm';
     var gameConfig = {"visualization":{"backgroundColor":"#fafafa","canvasHeight":600,"canvasWidth":660,"renderers":[{"partitionName":"","properties":{"color":"#e3e6ec","width":1,"x1":85,"x2":635,"y1":50,"y2":50},"type":"line"},{"partitionName":"","properties":{"color":"#2c3e50","width":1,"x1":85,"x2":635,"y1":170,"y2":170},"type":"line"},{"partitionName":"trajectory_band","properties":{"defaultHeight":0,"defaultWidth":0,"fillColor":"#bcd0ee"},"type":"rectangleSet"},{"partitionName":"baseline_line","properties":{"defaultHeight":0,"defaultWidth":0,"fillColor":"#9a9a9a"},"type":"rectangleSet"},{"partitionName":"trajectory_median","properties":{"fillColor":"#3c78d8","radius":2},"type":"pointSet"},{"partitionName":"","properties":{"color":"#2c3e50","width":1,"x1":85,"x2":635,"y1":240,"y2":240},"type":"line"},{"partitionName":"","properties":{"color":"#e3e6ec","width":1,"x1":85,"x2":635,"y1":360,"y2":360},"type":"line"},{"partitionName":"regional_bars","properties":{"defaultHeight":0,"defaultWidth":0,"fillColor":"#3c78d8"},"type":"rectangleSet"},{"partitionName":"","properties":{"color":"#e3e6ec","width":1,"x1":85,"x2":635,"y1":430,"y2":430},"type":"line"},{"partitionName":"","properties":{"color":"#2c3e50","width":1,"x1":85,"x2":635,"y1":550,"y2":550},"type":"line"},{"partitionName":"distribution_bars","properties":{"defaultHeight":0,"defaultWidth":0,"fillColor":"#7d8aa1"},"type":"rectangleSet"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"system-ui, -apple-system, sans-serif","fontSize":16,"text":"Projected log-density across sites (median + 90% band)","textAlign":"center","x":360,"y":36},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"system-ui, -apple-system, sans-serif","fontSize":16,"text":"% density change by region at the projection horizon","textAlign":"center","x":360,"y":226},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"ui-monospace, SFMono-Regular, Menlo, monospace","fontSize":14,"text":"D\u0026C","textAlign":"center","x":115,"y":382},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"ui-monospace, SFMono-Regular, Menlo, monospace","fontSize":14,"text":"East","textAlign":"center","x":176,"y":382},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"ui-monospace, SFMono-Regular, Menlo, monospace","fontSize":14,"text":"K\u0026SL","textAlign":"center","x":237,"y":382},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"ui-monospace, SFMono-Regular, Menlo, monospace","fontSize":14,"text":"North","textAlign":"center","x":298,"y":382},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"ui-monospace, SFMono-Regular, Menlo, monospace","fontSize":14,"text":"NE","textAlign":"center","x":360,"y":382},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"ui-monospace, SFMono-Regular, Menlo, monospace","fontSize":14,"text":"Nrn","textAlign":"center","x":421,"y":382},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"ui-monospace, SFMono-Regular, Menlo, monospace","fontSize":14,"text":"Wess","textAlign":"center","x":482,"y":382},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"ui-monospace, SFMono-Regular, Menlo, monospace","fontSize":14,"text":"West","textAlign":"center","x":543,"y":382},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"ui-monospace, SFMono-Regular, Menlo, monospace","fontSize":14,"text":"York","textAlign":"center","x":604,"y":382},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"system-ui, -apple-system, sans-serif","fontSize":16,"text":"Site count by outcome category at the projection horizon","textAlign":"center","x":360,"y":416},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"ui-monospace, SFMono-Regular, Menlo, monospace","fontSize":14,"text":"Stable","textAlign":"center","x":153,"y":572},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"ui-monospace, SFMono-Regular, Menlo, monospace","fontSize":14,"text":"Declining","textAlign":"center","x":291,"y":572},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"ui-monospace, SFMono-Regular, Menlo, monospace","fontSize":14,"text":"Critical \u003e50%","textAlign":"center","x":428,"y":572},"type":"text"},{"partitionName":"","properties":{"color":"#2c3e50","fontFamily":"ui-monospace, SFMono-Regular, Menlo, monospace","fontSize":14,"text":"Extinct \u003e90%","textAlign":"center","x":566,"y":572},"type":"text"}],"updateIntervalMs":0},"sliders":[{"name":"climate_c","partition":"scenario_snapshot","valueIndex":0,"default":0,"decimals":2},{"name":"flow_pct","partition":"scenario_snapshot","valueIndex":1,"default":0,"decimals":3},{"name":"do_pct","partition":"scenario_snapshot","valueIndex":2,"default":0,"decimals":1},{"name":"horizon_y","partition":"scenario_snapshot","valueIndex":3,"default":20,"decimals":3}],"readouts":[{"partition":"scenario_snapshot","template":"climate +{v0}°C · flow {v1}% · DO {v2}% · year {v3}","decimals":1}],"showReset":true,"driver":{"kind":"inline","options":{"intervalMs":40}}};
 
     // Load the renderer script lazily, sharing one promise across every
@@ -112,26 +112,7 @@
             grouped[s.partition].push(s);
         }
         return grouped;
-    
-    function wireInertSliderHint() {
-        var hint = $('[data-slider-hint]');
-        if (!hint) return;
-        var inert = ['flow_pct', 'do_pct'];
-        var shown = false;
-        var dismissTimer = null;
-        function show() {
-            if (shown) return;
-            shown = true;
-            hint.classList.add('visible');
-            dismissTimer = setTimeout(function () { hint.classList.remove('visible'); }, 7000);
-        }
-        for (var i = 0; i < inert.length; i++) {
-            var el = $('[data-slider="' + inert[i] + '"]');
-            if (el) el.addEventListener('input', show, { once: true });
-        }
-    }
-
-})();
+    })();
 
     var worker = null;
 
@@ -225,5 +206,24 @@
         console.error(err);
         setStatus('Failed to load dexetera runtime: ' + err.message);
     });
+
+    function wireInertSliderHint() {
+        var hint = $('[data-slider-hint]');
+        if (!hint) return;
+        var inert = ['flow_pct', 'do_pct'];
+        var shown = false;
+        var dismissTimer = null;
+        function show() {
+            if (shown) return;
+            shown = true;
+            hint.classList.add('visible');
+            dismissTimer = setTimeout(function () { hint.classList.remove('visible'); }, 7000);
+        }
+        for (var i = 0; i < inert.length; i++) {
+            var el = $('[data-slider="' + inert[i] + '"]');
+            if (el) el.addEventListener('input', show, { once: true });
+        }
+    }
+
 })();
 </script>

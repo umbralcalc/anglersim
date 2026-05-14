@@ -121,10 +121,13 @@ func rewriteWidget(path string) error {
         startWorker(renderer);
         wireInertSliderHint();`,
 	)
+	// Anchor on the closing tag — there's only one </script> in the
+	// emitted snippet, so this targets the IIFE wrapping the whole
+	// widget rather than the inner slidersByPartition IIFE that also
+	// ends with `})();`.
 	out = mustReplace(out,
-		`})();`,
-		inertSliderHintScript+`
-})();`,
+		"})();\n</script>",
+		inertSliderHintScript+"\n})();\n</script>",
 	)
 
 	return os.WriteFile(path, []byte(out), 0644)

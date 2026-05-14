@@ -130,26 +130,7 @@ header p { margin: 0 0 1.4em; opacity: 0.65; font-size: 0.95em; }
             grouped[s.partition].push(s);
         }
         return grouped;
-    
-    function wireInertSliderHint() {
-        var hint = $('[data-slider-hint]');
-        if (!hint) return;
-        var inert = ['flow_pct', 'do_pct'];
-        var shown = false;
-        var dismissTimer = null;
-        function show() {
-            if (shown) return;
-            shown = true;
-            hint.classList.add('visible');
-            dismissTimer = setTimeout(function () { hint.classList.remove('visible'); }, 7000);
-        }
-        for (var i = 0; i < inert.length; i++) {
-            var el = $('[data-slider="' + inert[i] + '"]');
-            if (el) el.addEventListener('input', show, { once: true });
-        }
-    }
-
-})();
+    })();
 
     var worker = null;
 
@@ -243,6 +224,25 @@ header p { margin: 0 0 1.4em; opacity: 0.65; font-size: 0.95em; }
         console.error(err);
         setStatus('Failed to load dexetera runtime: ' + err.message);
     });
+
+    function wireInertSliderHint() {
+        var hint = $('[data-slider-hint]');
+        if (!hint) return;
+        var inert = ['flow_pct', 'do_pct'];
+        var shown = false;
+        var dismissTimer = null;
+        function show() {
+            if (shown) return;
+            shown = true;
+            hint.classList.add('visible');
+            dismissTimer = setTimeout(function () { hint.classList.remove('visible'); }, 7000);
+        }
+        for (var i = 0; i < inert.length; i++) {
+            var el = $('[data-slider="' + inert[i] + '"]');
+            if (el) el.addEventListener('input', show, { once: true });
+        }
+    }
+
 })();
 </script>
 
