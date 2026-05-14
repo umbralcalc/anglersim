@@ -14,6 +14,9 @@ import (
 )
 
 // SiteData holds the time series for a single site, ready for model fitting.
+// Rows are filtered at load time so every retained year has a finite density
+// and a finite value for every required covariate — see LoadAllSiteTimeSeries
+// for the rule.
 type SiteData struct {
 	SiteID        int
 	Area          string      // EA management area (e.g. "Devon and Cornwall")
@@ -23,8 +26,17 @@ type SiteData struct {
 	NumCovariates int
 }
 
+// requiredCovariateColumns lists the panel columns whose values must all be
+// finite (non-empty, parseable) for a site-year to be retained. The loader
+// previously silently zero-filled missing covariates, which contaminated the
+// hierarchical fit by treating ~663/790 sites' missing values as exact zeros.
+// Keeping the column list central makes that failure mode impossible to
+// recreate accidentally.
+var requiredCovariateColumns = []string{"MEAN_FLOW", "MEAN_TEMP", "MEAN_DO"}
+
 // LoadSiteTimeSeries reads a panel CSV with covariates and extracts the time
-// series for a single site. Rows with zero density are skipped.
+// series for a single site. Rows are dropped if density <= 0 or any required
+// covariate is missing/unparseable.
 func LoadSiteTimeSeries(panelFile string, siteID int) *SiteData {
 	f, err := os.Open(panelFile)
 	if err != nil {
@@ -63,17 +75,18 @@ func LoadSiteTimeSeries(panelFile string, siteID int) *SiteData {
 			continue
 		}
 
-		flow := parseFloatDefault(record[idx["MEAN_FLOW"]])
-		temp := parseFloatDefault(record[idx["MEAN_TEMP"]])
-		do := parseFloatDefault(record[idx["MEAN_DO"]])
+		row, ok := readRequiredCovariates(record, idx)
+		if !ok {
+			continue
+		}
 
 		years = append(years, year)
 		logDensities = append(logDensities, []float64{math.Log(density)})
-		covariates = append(covariates, []float64{flow, temp, do})
+		covariates = append(covariates, row)
 	}
 
 	if len(years) == 0 {
-		panic("no data found for site " + strconv.Itoa(siteID))
+		panic("no fully-covariated data found for site " + strconv.Itoa(siteID))
 	}
 
 	return &SiteData{
@@ -81,12 +94,15 @@ func LoadSiteTimeSeries(panelFile string, siteID int) *SiteData {
 		Years:         years,
 		LogDensity:    logDensities,
 		Covariates:    covariates,
-		NumCovariates: 3,
+		NumCovariates: len(requiredCovariateColumns),
 	}
 }
 
-// LoadAllSiteTimeSeries reads the panel CSV once and returns time series
-// for every site. Sites with zero valid rows (density <= 0) are omitted.
+// LoadAllSiteTimeSeries reads the panel CSV once and returns time series for
+// every site that has at least one fully-covariated, positive-density row.
+// Site-years with missing or unparseable values in any of the required
+// covariate columns are dropped; sites whose remaining rows fall below the
+// caller's `--min-years` threshold are filtered by the caller, not here.
 func LoadAllSiteTimeSeries(panelFile string) map[int]*SiteData {
 	f, err := os.Open(panelFile)
 	if err != nil {
@@ -127,12 +143,13 @@ func LoadAllSiteTimeSeries(panelFile string) map[int]*SiteData {
 			continue
 		}
 
-		flow := parseFloatDefault(record[idx["MEAN_FLOW"]])
-		temp := parseFloatDefault(record[idx["MEAN_TEMP"]])
-		do := parseFloatDefault(record[idx["MEAN_DO"]])
-
-		acc, ok := sites[id]
+		row, ok := readRequiredCovariates(record, idx)
 		if !ok {
+			continue
+		}
+
+		acc, present := sites[id]
+		if !present {
 			acc = &siteAccum{}
 			if hasArea {
 				acc.area = record[areaIdx]
@@ -141,7 +158,7 @@ func LoadAllSiteTimeSeries(panelFile string) map[int]*SiteData {
 		}
 		acc.years = append(acc.years, year)
 		acc.logDensity = append(acc.logDensity, []float64{math.Log(density)})
-		acc.covariates = append(acc.covariates, []float64{flow, temp, do})
+		acc.covariates = append(acc.covariates, row)
 	}
 
 	result := make(map[int]*SiteData, len(sites))
@@ -152,10 +169,30 @@ func LoadAllSiteTimeSeries(panelFile string) map[int]*SiteData {
 			Years:         acc.years,
 			LogDensity:    acc.logDensity,
 			Covariates:    acc.covariates,
-			NumCovariates: 3,
+			NumCovariates: len(requiredCovariateColumns),
 		}
 	}
 	return result
+}
+
+// readRequiredCovariates reads the required covariate columns from a panel
+// row and returns (values, true) if every required value parses to a finite
+// number, or (nil, false) otherwise. This is the single chokepoint that
+// enforces the "no silent zeros" rule.
+func readRequiredCovariates(record []string, idx map[string]int) ([]float64, bool) {
+	out := make([]float64, len(requiredCovariateColumns))
+	for i, col := range requiredCovariateColumns {
+		ci, present := idx[col]
+		if !present {
+			return nil, false
+		}
+		v, err := strconv.ParseFloat(record[ci], 64)
+		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+			return nil, false
+		}
+		out[i] = v
+	}
+	return out, true
 }
 
 // TruncateSiteData splits a site's time series into train (first T-holdout
@@ -183,14 +220,6 @@ func TruncateSiteData(sd *SiteData, holdout int) (train, test *SiteData) {
 		NumCovariates: sd.NumCovariates,
 	}
 	return
-}
-
-func parseFloatDefault(s string) float64 {
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0.0
-	}
-	return v
 }
 
 // SiteYearRecord holds the prepared data for one site in one year.

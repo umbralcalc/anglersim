@@ -1,8 +1,10 @@
 # anglersim
 
-Evaluating the impact of sustainability policies on freshwater fish populations in the UK using data-driven simulations.
+A methodological study: can the UK's National Fish Population Database (NFPD) electrofishing surveys, combined with the EA Hydrology and Water Quality APIs, support a climate-driven population dynamics model for brown trout?
 
-This project was built using the [stochadex framework](https://github.com/umbralcalc/stochadex).
+**Short answer: not at present.** The NFPD covers 1,372 brown trout sites with ≥10 years of density observations, but the EA Water Quality API matches only ~3% of those site-years (Hydrology does better at ~21%). After filtering to sites with ≥10 years of fully-covariated data, **19 sites** remain — too sparse to fit a meaningful hierarchical climate-effects model.
+
+This repo documents what the pipeline does, where the data runs out, and what would be needed to do this properly. Built on the [stochadex framework](https://github.com/umbralcalc/stochadex).
 
 ## Data assessment
 
@@ -18,14 +20,29 @@ The core dataset is the EA's electrofishing survey data (NFPD bulk downloads). C
 - **Individual length measurements:** 7.5M records linked to surveys via SURVEY_ID, enabling size-structured population models
 - **Geographic coverage:** All EA areas in England, strongest in North, Devon & Cornwall, Yorkshire
 
-This is sufficient to build and train stochastic population dynamics models at well-surveyed sites.
+The density-only side of the data is rich. Where it falls down is at the join with environmental covariates.
+
+### Environmental covariates — the bottleneck
+
+| Source | Channel | Panel-row coverage* | Sites with ≥10 yrs† |
+|---|---|---|---|
+| EA Hydrology API | Mean / Q10 / Q90 daily flow (m³/s) | **21.2%** | 124 |
+| EA Water Quality API | Mean / max temperature (°C) | **3.4%** | 20 |
+| EA Water Quality API | Mean / min dissolved oxygen (mg/l) | **3.2%** | 20 |
+| **All three together** | flow + temp + DO | — | **19** |
+
+*Among 13,293 non-zero-density brown trout panel rows. †Among the 790 sites with ≥10 years of density observations.
+
+The reason is structural: the EA Hydrology gauging network covers most rivers, but the Water Quality F6 sampling-point network is much sparser. Even with nearest-station matching (`cmd/fetchcovariates`), most site-years are unmatchable to a real WQ measurement.
+
+A climate-effects model trained on all three EA covariates therefore has ~19 effective sites. A flow-only model has ~124. The full 790-site fits previously published in this repo were obtained from an earlier version of the data loader that silently zero-filled missing covariate values — see *Historical artifacts* below — and should not be used as scientific results.
 
 ### Integrated environmental covariates
 
 | Source | Contains | Access | Integration |
 |--------|----------|--------|-------------|
-| **EA Hydrology API** | Daily mean river flow (m³/s) from gauging stations | `environment.data.gov.uk/hydrology/` | Nearest station by easting/northing, annual stats (mean, min, max, Q10, Q90) joined to panel |
-| **EA Water Quality API** | Temperature (°C), dissolved oxygen (mg/l), ammonia, BOD | `environment.data.gov.uk/water-quality/` | Nearest river sampling point (type F6), annual stats joined to panel |
+| **EA Hydrology API** | Daily mean river flow (m³/s) from gauging stations | `environment.data.gov.uk/hydrology/` | Nearest station by easting/northing, annual + summer stats joined to panel |
+| **EA Water Quality API** | Temperature (°C), dissolved oxygen (mg/l), ammonia, BOD | `environment.data.gov.uk/water-quality/` | Nearest river sampling point (type F6), annual + winter-DO / summer-temp stats joined to panel |
 
 Both APIs require no authentication. Fetched data is cached in `dat/hydrology/` and `dat/water_quality/`. Run `cmd/fetchcovariates` to populate.
 
@@ -96,27 +113,27 @@ go run ./cmd/fetchcovariates \
   --out dat/brown_trout_panel_with_covariates.csv
 ```
 
-This is slow (API rate-limited) but caches results in `dat/hydrology/` and `dat/water_quality/`.
+This is slow (API rate-limited) but caches results in `dat/hydrology/` and `dat/water_quality/`. The output marks rows with missing covariates as empty (not zero) — the panel loader (`pkg/data/panel.go`) now drops site-years with any required covariate missing, so downstream fits only see real measurements.
 
-**3. Batch SMC inference** — fit the stochastic Ricker model independently to every qualifying site using Sequential Monte Carlo.
+**3. Batch SMC inference** — fit the stochastic Ricker model independently to every qualifying site using Sequential Monte Carlo. With the patched loader, `--min-years` (default 10) now means "≥N years of fully-covariated data per site" — site-years with any required covariate missing have already been dropped by `LoadAllSiteTimeSeries`.
 
 ```bash
 go run ./cmd/batchsmc \
   --panel dat/brown_trout_panel_with_covariates.csv \
   --out dat/batch_smc_results.csv \
-  --workers 4 --particles 500 --rounds 3
+  --workers 4 --particles 500 --rounds 3 --min-years 10
 ```
 
-Produces per-site posterior means, standard deviations, and log marginal likelihoods.
+Produces per-site posterior means, standard deviations, and log marginal likelihoods. With the default filter and the current EA Water Quality coverage, this fits ~19 sites — not 790.
 
-**4. Hierarchical empirical Bayes** — use the Stage 1 posteriors to estimate population-level hyperparameters for covariate effects, then re-fit all sites under hierarchical priors. Iterates until convergence.
+**4. Hierarchical empirical Bayes** — use the Stage 1 posteriors to estimate population-level hyperparameters for covariate effects, then re-fit all sites under hierarchical priors. With only ~19 eligible sites the pool is small; per-site posteriors dominate and the EB shrinkage is weak.
 
 ```bash
 go run ./cmd/batchhierarchical \
   --stage1 dat/batch_smc_results.csv \
   --panel dat/brown_trout_panel_with_covariates.csv \
   --out dat/hierarchical_results.csv \
-  --workers 4 --particles 500 --rounds 3 --iterations 3
+  --workers 4 --particles 500 --rounds 3 --iterations 3 --min-years 10
 ```
 
 **5. Held-out validation** — fit on training data (all but the last N years), forward-simulate predictions, and compute RMSE/coverage metrics.
@@ -129,7 +146,7 @@ go run ./cmd/validate \
   --workers 4 --holdout 3 --sims 200
 ```
 
-**6. Policy scenario simulation** — Monte Carlo forward projections under predefined policy scenarios (baseline, climate +1/+2 C, low abstraction, drought, water quality improvement, combined). Pass `--regional` to produce a per-region summary CSV.
+**6. Policy scenario simulation** — Monte Carlo forward projections under predefined policy scenarios. Pass `--regional` to produce a per-region summary CSV. Magnitudes of climate-related effects should be interpreted in light of the very small eligible site count — see *Findings* below.
 
 ```bash
 go run ./cmd/simulate \
@@ -141,7 +158,7 @@ go run ./cmd/simulate \
   --scenario all --horizon 20 --sims 500 --workers 4
 ```
 
-**7. Visualise** — open `nbs/model_validation.ipynb` to plot parameter distributions, validation diagnostics, hierarchical vs independent comparisons, and policy scenario impacts. The notebook expects all the above CSV files to exist in `dat/`.
+**7. Visualise** — open `nbs/model_validation.ipynb` to plot parameter distributions, validation diagnostics, hierarchical vs independent comparisons, and policy scenario impacts.
 
 ### Single-site debugging
 
@@ -153,43 +170,32 @@ go run ./cmd/fit \
   --site 1915 --n 5000
 ```
 
-## Key results
+## Findings
 
-### Fleet-level scenario impacts (20yr projection, 790 sites)
+### What the data can support
 
-| Scenario | Med density change | Sites declining | Critical (>50% loss) | Mean extinction P |
-|----------|-------------------|-----------------|---------------------|-------------------|
-| baseline | -8.6% | 59.4% | 17.6% | 0.059 |
-| climate +1°C | -11.6% | 59.5% | 19.4% | 0.063 |
-| climate +2°C | -14.2% | 61.3% | 22.8% | 0.073 |
-| low abstraction (+15% flow) | -8.4% | 58.2% | 17.5% | 0.059 |
-| drought (-25% flow) | -10.3% | 60.6% | 17.7% | 0.059 |
-| water quality (+15% DO) | -8.8% | 59.4% | 17.6% | 0.059 |
-| combined +2°C & +15% DO | -14.2% | 61.3% | 22.8% | 0.074 |
+- **Per-site density dynamics.** The stochastic Ricker model with Allee depensation fits the 790 sites with ≥10 years of density observations. Held-out validation RMSE is wide (median 0.72 log-units across all 573 validated sites, equivalent to ~±100% in density) but the 90% prediction intervals cover most held-out observations (median 1.00, mean 0.82). The model captures equilibrium density and process noise reasonably well at the per-site level.
+- **Flow-only effects on a 124-site subset** is feasible in principle, though the within-site signal is weak: the median per-site `beta_flow` posterior across the 124-site fits is +0.011 with a cross-site sd of 0.21 — consistent with noise.
 
-The model includes an Allee effect (depensatory growth at low density), which prevents unrealistic recovery projections for near-zero populations. Even the baseline scenario projects a -8.6% median decline, consistent with observed downward trends in the survey data. **Temperature remains the dominant driver**, adding ~6pp of additional decline under +2°C warming. Flow and dissolved oxygen interventions remain negligible at the population level.
+### What the data cannot support
 
-### Regional vulnerability (climate +2°C scenario)
+- **A climate-effects model.** Only 19 brown trout sites have ≥10 years of complete temperature + DO covariate coverage. That is too few sites for population-level inference about climate sensitivity, even before considering that linear `beta_temp × temp` is the wrong functional form for a thermal-optimum response.
+- **Quantitative "+1°C / +2°C costs X% density" claims.** With essentially no within-site temperature signal at most sites — and only 19 sites with enough WQ coverage to contribute information — the temperature coefficient cannot be identified from these data. Any specific magnitude is noise.
+- **Quantitative DO or BOD interventions.** Same coverage problem.
 
-| Region | Sites | Med density change | Critical (>50% loss) | Mean extinction P |
-|--------|-------|-------------------|---------------------|-------------------|
-| Kent & South London | 7 | -79.0% | 71.4% | 0.263 |
-| West | 34 | -33.4% | 38.2% | 0.139 |
-| Wessex | 37 | -32.6% | 40.5% | 0.127 |
-| Eastern | 39 | -31.1% | 41.0% | 0.116 |
-| Northern | 16 | -24.4% | 31.2% | 0.108 |
-| North | 153 | -17.2% | 19.0% | 0.047 |
-| Yorkshire | 128 | -14.8% | 21.1% | 0.125 |
-| Devon & Cornwall | 206 | -4.6% | 16.5% | 0.021 |
-| North East | 71 | -5.5% | 19.7% | 0.088 |
+### Why the original 790-site climate fit was misleading
 
-Kent & South London (7 sites) faces the most severe projected decline. The West, Wessex, and Eastern regions show >30% median losses with 38-41% of sites in critical decline. Devon & Cornwall — the largest region — is the most resilient with only -4.6% median change under +2°C.
+The earlier version of `pkg/data/panel.go` used a `parseFloatDefault` helper that returned `0.0` for any missing or unparseable covariate value, with no warning. Because 97.6% of brown trout panel rows have at least one missing covariate, the SMC was being trained on a panel where most temperature, flow and DO observations were literally the number zero. The per-site posteriors correctly returned ~noise (the likelihood was invariant to the covariate effects), but the iterative empirical Bayes step then pooled across all 790 noise estimates. Iterative shrinkage drove the inferred `sigma_beta_*` to the 0.01 floor, locking every site to the same `mu_beta_*`, which was itself residual sampling noise.
 
-### Seasonal covariate experiment
+When projected forward over a 30-year horizon under climate scenarios, that locked-in `mu_beta_temp` produced visible but spurious population trajectories — including, depending on the random sign of the noise, the implausible "warming increases brown trout density" pattern seen in the most recent runs.
 
-Seasonal aggregation was tested as an alternative to annual means: summer mean flow (Jun–Sep), summer mean temp (Jun–Sep), and winter mean DO (Dec–Feb). The seasonal covariates did not improve the flow/DO signal (effects remained ~0.01) and the temperature effect became slightly positive — implying warming *reduces* decline, which is ecologically implausible for brown trout. This confirms that the annual mean temperature signal is primarily capturing correlated long-term trends (warming + other changes) rather than direct thermal stress. The model retains annual means as covariates; seasonal aggregation functions remain available in the codebase (`AggregateSeasonalFlow`, `AggregateSeasonalWQ`) and the panel CSV includes seasonal columns for future use.
+The loader has been patched to propagate `NaN` and the batch commands now drop incomplete site-years and filter on covariate coverage by default, so this can't silently happen again.
 
-### Rod catch correlation analysis
+### Held-out validation
+
+Median RMSE on a 3-year holdout is 0.72 log-units across 573 sites; mean 90% interval coverage is 0.82 (median 1.00). 76 of 573 sites have <50% coverage and are flagged in the notebook. The model is a useful population descriptor but most of the held-out predictive width comes from process noise; the validation does not distinguish a model with non-zero covariate effects from one with covariate effects pinned at zero.
+
+### Rod catch correlation analysis (unchanged)
 
 Rod catch returns (GOV.UK supplementary data tables, 2008–2024) were matched to NFPD electrofishing sites to test whether angling harvest correlates with population trends. 255 NFPD sites were matched to 46 rod catch rivers using river names extracted from NFPD site parent names. Results across 1,421 site-year observations:
 
@@ -200,13 +206,25 @@ Rod catch returns (GOV.UK supplementary data tables, 2008–2024) were matched t
 
 Rod catch returns reflect angler effort and access rather than site-level fishing pressure. With >90% catch-and-release in recent years, actual harvest is a negligible fraction of reported catch. Rod catch is not incorporated as a model covariate.
 
-### Caveats
+## What would be needed to do this properly
 
-- Near-zero flow/DO effects persist under both annual and seasonal covariate resolution, suggesting the limitation is fundamental to the data (sparse WQ sampling, covariate station matching noise) rather than fixable by temporal aggregation
-- Model fitted on density (fish/m²) from electrofishing surveys — habitat loss wouldn't show up
-- Temperature signal likely captures correlated time trends (warming + other long-term changes) rather than direct thermal stress — confirmed by seasonal experiment where summer-specific temps lost the signal
-- Regions with few sites (< 20) should be interpreted with caution
-- The Allee effect prior (LogNormal) is weakly informative — the strength of depensatory growth is estimated per site but may be poorly identified at sites with limited low-density observations
+1. **Better water-quality coverage.** The bottleneck is the EA F6 sampling network. Options include: FOI-route to EA internal water quality data, climate reanalysis grids (e.g. HadUK-Grid for temperature) to give a value for every site-year, or modelled-DO products from catchment-scale process models.
+2. **Non-linear thermal response.** A linear `beta_temp × temp` term cannot represent a thermal optimum (cool → tolerable → lethal). With richer data, a quadratic term or a piecewise-linear above/below preferred-range model would be the right form.
+3. **A design that breaks the warming-vs-recovery confound.** UK rivers recovered from industrial pollution over much of the panel period, so a naïve year-on-year fit will conflate "warming" with "everything else improved." A difference-in-differences design or a pre/post split on a known intervention would help.
+4. **A richer set of sites for the hierarchical pool.** The current 19-site bottleneck is what makes empirical Bayes useless here. Loosening the species filter, or running a multi-species hierarchical model, would increase the pool.
+
+## Historical artifacts in `dat/`
+
+The CSVs currently checked into `dat/` (`batch_smc_results.csv`, `hierarchical_results.csv`, `projections.csv`, `projections_summary.csv`, `regional_summary.csv`, `validation_*.csv`) were produced by the original pipeline before the silent-zero-fill loader bug was identified and fixed. They cover all 790 sites — including the 663 sites that were "fitted" against all-zero covariates. They are kept in the repository for reference and reproducibility but **should not be cited as scientific results**.
+
+The hyperparameter comment at the top of the old `hierarchical_results.csv` (`mu_temp=+0.006855 sigma_temp=0.014659 mu_do=-0.012116 sigma_do=0.013581`) is the visible signature of the runaway-shrinkage failure described above: tiny sigma, near-zero mu of arbitrary sign. Re-running the patched pipeline against the same panel produces a much smaller fit (~19 sites, no hierarchical pooling worth the name, no statistically meaningful climate coefficients).
+
+## Caveats
+
+- The model is fit on density (fish/m²) from electrofishing surveys — habitat loss would not show up as density change.
+- The Allee effect prior (LogNormal) is weakly informative — strength of depensatory growth is estimated per site but may be poorly identified at sites with limited low-density observations.
+- Regions with few sites (< 20) should be interpreted with caution.
+- Seasonal aggregation (summer flow/temp, winter DO) is available in the panel CSV and `pkg/data/{hydrology,water_quality}.go` but does not materially change the coverage picture above.
 
 ## Data sources for the project
 

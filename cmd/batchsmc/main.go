@@ -24,7 +24,7 @@ func main() {
 	particles := flag.Int("particles", 500, "particles per SMC run")
 	rounds := flag.Int("rounds", 3, "SMC importance sampling rounds")
 	baseSeed := flag.Uint64("seed", 42, "base random seed")
-	minYears := flag.Int("min-years", 10, "minimum years of data per site")
+	minYears := flag.Int("min-years", 10, "minimum years of fully-covariated data per site (panel loader drops site-years with any required covariate missing)")
 	verbose := flag.Bool("verbose", false, "verbose per-site output")
 	flag.Parse()
 
