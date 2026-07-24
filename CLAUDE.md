@@ -29,8 +29,6 @@ cmd/batchsmc/       # CLI: independent batch SMC fitting (790 sites)
 cmd/batchhierarchical/ # CLI: iterative empirical Bayes batch fitting
 cmd/validate/       # CLI: held-out prediction validation
 cmd/simulate/       # CLI: policy scenario simulation (all scenarios × all sites)
-cfg/                # Stochadex YAML configs
-  smc_inference.yaml # Reference config for SMC with embedded inner sim (N=2)
 nbs/                # GoNB Jupyter notebooks
   data_exploration.ipynb    # Data exploration and coverage analysis
   model_validation.ipynb    # Model validation, hierarchical comparison, policy scenarios
@@ -134,9 +132,9 @@ Log-likelihoods are extracted from the embedded output via indexed upstream on t
 - `buildEmbeddedParamsFromUpstream(N, nParams)` — generates indexed upstream wiring
 - `NewNormalDataComparison()` — helper to construct `DataComparisonIteration` without import alias conflicts
 
-### YAML config
+### Running SMC inference
 
-`cfg/smc_inference.yaml` is a reference config using the stochadex `embedded` field. The `smc_sim` main partition has no `iteration` — it's matched by name to the `embedded` run, which the API automatically wraps with `EmbeddedSimulationRunIteration`. Uses N=2 for readability; use `RunSMC()` for larger N.
+SMC inference is run via the library entry point `RunSMC(siteData, config)` (see `pkg/inference/smc.go`), driven by the `cmd/fit`, `cmd/batchsmc` and `cmd/batchhierarchical` binaries. The SMC proposal/posterior and the Ricker model are bespoke Go iterations that embed the stochadex engine as a library, so this is Go, not a config-as-data run. (There is no `cfg/` YAML: the earlier `smc_inference.yaml` reference config depended on the stochadex Go-expression config path, which has been removed.)
 
 ### Model parameters (d=7)
 
