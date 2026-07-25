@@ -103,10 +103,10 @@ func TestEstimateHyperParams(t *testing.T) {
 		sites := make([]SitePosteriorSummary, 50)
 		for i := range 50 {
 			sites[i] = SitePosteriorSummary{
-				SiteID:   i,
-				NumYears: 20,
-				Mean:     []float64{0.5, 5.0, 0.1, 0.1, 0.1, 0.2, 0.4},
-				Std:      []float64{0.1, 1.0, 0.02, 0.02, 0.02, 0.05, 0.1},
+				SiteID:     i,
+				NumYears:   20,
+				Mean:       []float64{0.5, 5.0, 0.1, 0.1, 0.1, 0.2, 0.4},
+				Std:        []float64{0.1, 1.0, 0.02, 0.02, 0.02, 0.05, 0.1},
 				LogMargLik: -10.0,
 			}
 		}

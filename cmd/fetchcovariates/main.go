@@ -74,11 +74,11 @@ type flowMapping struct {
 }
 
 type wqMapping struct {
-	siteID   int
-	siteName string
-	notation string
+	siteID    int
+	siteName  string
+	notation  string
 	pointName string
-	distKm   float64
+	distKm    float64
 }
 
 func loadSites(path string, minYears int) []site {

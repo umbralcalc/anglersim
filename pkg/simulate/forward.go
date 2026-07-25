@@ -17,8 +17,8 @@ type SiteFittedParams struct {
 
 // ProjectionConfig controls the forward simulation.
 type ProjectionConfig struct {
-	Horizon             int     // projection years (default 20)
-	NumSims             int     // Monte Carlo trajectories per site (default 500)
+	Horizon             int // projection years (default 20)
+	NumSims             int // Monte Carlo trajectories per site (default 500)
 	Seed                uint64
 	ExtinctionThreshold float64 // log-density threshold for functional extinction
 }
@@ -43,13 +43,13 @@ type SiteProjection struct {
 	BaselineMeanLogN float64 // mean log-density over last 5 observed years
 
 	// Projection summary per year
-	ProjYears []float64
-	MeanLogN  []float64 // [horizon]
+	ProjYears  []float64
+	MeanLogN   []float64 // [horizon]
 	MedianLogN []float64
-	Lo90      []float64
-	Hi90      []float64
-	Lo50      []float64
-	Hi50      []float64
+	Lo90       []float64
+	Hi90       []float64
+	Lo50       []float64
+	Hi50       []float64
 
 	// Derived metrics at horizon
 	MeanDensityChangePct float64 // mean % change in density at horizon vs baseline

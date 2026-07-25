@@ -30,7 +30,7 @@ const (
 
 // WQSamplingPoint represents a water quality sampling point.
 type WQSamplingPoint struct {
-	Notation string  // e.g. "SW-70512058"
+	Notation string // e.g. "SW-70512058"
 	Name     string
 	Lat      float64
 	Long     float64

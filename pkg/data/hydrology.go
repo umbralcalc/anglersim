@@ -109,13 +109,13 @@ type apiResponse struct {
 }
 
 type stationJSON struct {
-	ID         string `json:"@id"`
-	Label      string `json:"label"`
-	Easting    int    `json:"easting"`
-	Northing   int    `json:"northing"`
+	ID         string  `json:"@id"`
+	Label      string  `json:"label"`
+	Easting    int     `json:"easting"`
+	Northing   int     `json:"northing"`
 	Lat        float64 `json:"lat"`
 	Long       float64 `json:"long"`
-	DateOpened string `json:"dateOpened"`
+	DateOpened string  `json:"dateOpened"`
 	Measures   []struct {
 		ID        string `json:"@id"`
 		Parameter string `json:"parameter"`
@@ -299,13 +299,13 @@ func GetDailyFlowReadings(measureID, startDate, endDate string) []HydrologyReadi
 
 // AnnualFlowStats holds summary flow statistics for one year.
 type AnnualFlowStats struct {
-	Year       int
-	MeanFlow   float64 // mean daily flow (m³/s)
-	MaxFlow    float64 // max daily flow (m³/s)
-	MinFlow    float64 // min daily flow (m³/s)
-	Q10Flow    float64 // 10th percentile (low flow indicator)
-	Q90Flow    float64 // 90th percentile (high flow indicator)
-	NumDays    int     // days with readings
+	Year     int
+	MeanFlow float64 // mean daily flow (m³/s)
+	MaxFlow  float64 // max daily flow (m³/s)
+	MinFlow  float64 // min daily flow (m³/s)
+	Q10Flow  float64 // 10th percentile (low flow indicator)
+	Q90Flow  float64 // 90th percentile (high flow indicator)
+	NumDays  int     // days with readings
 }
 
 // AggregateAnnualFlow computes annual summary statistics from daily readings.

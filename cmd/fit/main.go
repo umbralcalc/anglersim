@@ -36,13 +36,13 @@ func main() {
 	// Prior ranges for random search
 	type paramRange struct{ lo, hi float64 }
 	ranges := []paramRange{
-		{-1.0, 3.0},   // growth_rate
-		{0.0, 50.0},   // density_dependence (in log-density space, so can be large)
-		{-0.5, 0.5},   // beta_flow
-		{-0.5, 0.5},   // beta_temp
-		{-0.5, 0.5},   // beta_do
-		{0.01, 1.0},   // process_noise_sd
-		{0.01, 1.0},   // obs_noise_sd
+		{-1.0, 3.0}, // growth_rate
+		{0.0, 50.0}, // density_dependence (in log-density space, so can be large)
+		{-0.5, 0.5}, // beta_flow
+		{-0.5, 0.5}, // beta_temp
+		{-0.5, 0.5}, // beta_do
+		{0.01, 1.0}, // process_noise_sd
+		{0.01, 1.0}, // obs_noise_sd
 	}
 
 	rng := rand.New(rand.NewPCG(*seed, *seed+1))

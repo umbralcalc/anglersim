@@ -19,7 +19,7 @@ import (
 // for the rule.
 type SiteData struct {
 	SiteID        int
-	Area          string      // EA management area (e.g. "Devon and Cornwall")
+	Area          string // EA management area (e.g. "Devon and Cornwall")
 	Years         []float64
 	LogDensity    [][]float64 // [T][1] — observed log-density per year
 	Covariates    [][]float64 // [T][K] — environmental covariates per year
@@ -224,18 +224,18 @@ func TruncateSiteData(sd *SiteData, holdout int) (train, test *SiteData) {
 
 // SiteYearRecord holds the prepared data for one site in one year.
 type SiteYearRecord struct {
-	SiteID      int
-	SiteName    string
-	Area        string
-	Easting     int
-	Northing    int
-	Year        int
-	Count       float64 // ALL_RUNS total (summed if multiple surveys)
-	SurveyArea  float64 // fished area in m²
-	Density     float64 // count / survey area (fish per m²)
-	NumSurveys  int     // surveys contributing to this year
-	Method      string  // dominant survey method
-	ZeroCatch   bool    // true if site was surveyed this year but species not caught
+	SiteID     int
+	SiteName   string
+	Area       string
+	Easting    int
+	Northing   int
+	Year       int
+	Count      float64 // ALL_RUNS total (summed if multiple surveys)
+	SurveyArea float64 // fished area in m²
+	Density    float64 // count / survey area (fish per m²)
+	NumSurveys int     // surveys contributing to this year
+	Method     string  // dominant survey method
+	ZeroCatch  bool    // true if site was surveyed this year but species not caught
 }
 
 // PanelConfig controls how the panel is built.
