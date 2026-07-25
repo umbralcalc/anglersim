@@ -5,9 +5,9 @@ import (
 
 	"github.com/umbralcalc/anglersim/pkg/data"
 	"github.com/umbralcalc/anglersim/pkg/population"
-	"github.com/umbralcalc/stochadex/pkg/analysis"
 	"github.com/umbralcalc/stochadex/pkg/general"
 	stdinf "github.com/umbralcalc/stochadex/pkg/inference"
+	"github.com/umbralcalc/stochadex/pkg/macros"
 	"github.com/umbralcalc/stochadex/pkg/simulator"
 )
 
@@ -43,7 +43,7 @@ func buildInnerSimConfig(
 	d *data.SiteData,
 	N int,
 	nParams int,
-) *analysis.SMCInnerSimConfig {
+) *macros.SMCInnerSimConfig {
 	T := len(d.Years)
 
 	partitions := make([]*simulator.PartitionConfig, 0, 2+2*N)
@@ -130,7 +130,7 @@ func buildInnerSimConfig(
 		paramForwarding[rickerName+"/allee_effect"] = []int{base + 7}
 	}
 
-	return &analysis.SMCInnerSimConfig{
+	return &macros.SMCInnerSimConfig{
 		Partitions: partitions,
 		Simulation: &simulator.SimulationConfig{
 			OutputCondition: &simulator.NilOutputCondition{},
@@ -151,13 +151,13 @@ func buildInnerSimConfig(
 // RunSMC runs iterated importance sampling for the Ricker model
 // using the stochadex SMC inference tools.
 func RunSMC(d *data.SiteData, config SMCConfig) *stdinf.SMCResult {
-	model := analysis.SMCParticleModel{
-		Build: func(N int, np int) *analysis.SMCInnerSimConfig {
+	model := macros.SMCParticleModel{
+		Build: func(N int, np int) *macros.SMCInnerSimConfig {
 			return buildInnerSimConfig(d, N, np)
 		},
 	}
 
-	return analysis.RunSMCInference(analysis.AppliedSMCInference{
+	return macros.RunSMCInference(macros.AppliedSMCInference{
 		ProposalName:  "smc_proposals",
 		SimName:       "smc_sim",
 		PosteriorName: "smc_posterior",

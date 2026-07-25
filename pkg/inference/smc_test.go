@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/umbralcalc/stochadex/pkg/analysis"
+
+	"github.com/umbralcalc/stochadex/pkg/macros"
 	"github.com/umbralcalc/stochadex/pkg/simulator"
 )
 
@@ -19,7 +21,7 @@ func TestSMCDecomposed_Harness(t *testing.T) {
 			numParticles := 10
 			nParams := 8
 
-			applied := analysis.AppliedSMCInference{
+			applied := macros.AppliedSMCInference{
 				ProposalName:  "smc_proposals",
 				SimName:       "smc_sim",
 				PosteriorName: "smc_posterior",
@@ -27,8 +29,8 @@ func TestSMCDecomposed_Harness(t *testing.T) {
 				NumRounds:     2,
 				Priors:        DefaultRickerPriors(),
 				ParamNames:    DefaultSMCConfig().ParamNames,
-				Model: analysis.SMCParticleModel{
-					Build: func(N int, np int) *analysis.SMCInnerSimConfig {
+				Model: macros.SMCParticleModel{
+					Build: func(N int, np int) *macros.SMCInnerSimConfig {
 						return buildInnerSimConfig(siteData, N, np)
 					},
 				},
@@ -36,7 +38,7 @@ func TestSMCDecomposed_Harness(t *testing.T) {
 				Verbose: false,
 			}
 
-			partitions := analysis.NewSMCInferencePartitions(applied)
+			partitions := macros.NewSMCInferencePartitions(applied)
 			storage := analysis.NewStateTimeStorageFromPartitions(
 				partitions,
 				&simulator.NumberOfStepsTerminationCondition{
