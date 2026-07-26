@@ -30,8 +30,8 @@ func TestSMCDecomposed_Harness(t *testing.T) {
 				Priors:        DefaultRickerPriors(),
 				ParamNames:    DefaultSMCConfig().ParamNames,
 				Model: macros.SMCParticleModel{
-					Build: func(N int, np int) *macros.SMCInnerSimConfig {
-						return buildInnerSimConfig(siteData, N, np)
+					Build: func(np int) *macros.SMCInnerSimConfig {
+						return buildInnerSimConfig(siteData, np)
 					},
 				},
 				Seed:    42,

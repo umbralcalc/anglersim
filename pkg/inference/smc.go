@@ -37,17 +37,15 @@ func DefaultSMCConfig() SMCConfig {
 	}
 }
 
-// buildInnerSimConfig constructs an SMCInnerSimConfig for the Ricker
-// model with N parallel particle evaluations.
+// buildInnerSimConfig constructs one particle's Ricker model. The SMC macro
+// instantiates it per particle and seeds each independently.
 func buildInnerSimConfig(
 	d *data.SiteData,
-	N int,
 	nParams int,
 ) *macros.SMCInnerSimConfig {
 	T := len(d.Years)
 
-	partitions := make([]*simulator.PartitionConfig, 0, 2+2*N)
-	loglikePartitions := make([]string, N)
+	partitions := make([]*simulator.PartitionConfig, 0, 4)
 	paramForwarding := make(map[string][]int)
 
 	// [0] observed_data
@@ -72,63 +70,57 @@ func buildInnerSimConfig(
 		Seed:              0,
 	})
 
-	for p := range N {
-		rickerName := fmt.Sprintf("ricker_%d", p)
-		llName := fmt.Sprintf("loglike_%d", p)
+	const rickerName = "ricker"
+	const llName = "loglike"
 
-		// ricker_p
-		partitions = append(partitions, &simulator.PartitionConfig{
-			Name:      rickerName,
-			Iteration: &population.RickerIteration{},
-			Params: simulator.NewParams(map[string][]float64{
-				"growth_rate":            {0},
-				"density_dependence":     {0},
-				"covariate_coefficients": {0, 0, 0},
-				"covariates":             d.Covariates[0],
-				"process_noise_sd":       {0},
-				"allee_effect":           {0},
-			}),
-			ParamsFromUpstream: map[string]simulator.NamedUpstreamConfig{
-				"covariates": {Upstream: "covariates"},
-			},
-			InitStateValues:   d.LogDensity[0],
-			StateHistoryDepth: 2,
-			Seed:              uint64(p + 1),
-		})
+	partitions = append(partitions, &simulator.PartitionConfig{
+		Name:      rickerName,
+		Iteration: &population.RickerIteration{},
+		Params: simulator.NewParams(map[string][]float64{
+			"growth_rate":            {0},
+			"density_dependence":     {0},
+			"covariate_coefficients": {0, 0, 0},
+			"covariates":             d.Covariates[0],
+			"process_noise_sd":       {0},
+			"allee_effect":           {0},
+		}),
+		ParamsFromUpstream: map[string]simulator.NamedUpstreamConfig{
+			"covariates": {Upstream: "covariates"},
+		},
+		InitStateValues:   d.LogDensity[0],
+		StateHistoryDepth: 2,
+		Seed:              1,
+	})
 
-		// loglike_p
-		partitions = append(partitions, &simulator.PartitionConfig{
-			Name: llName,
-			Iteration: &stdinf.DataComparisonIteration{
-				Likelihood: &stdinf.NormalLikelihoodDistribution{},
-			},
-			Params: simulator.NewParams(map[string][]float64{
-				"mean":               d.LogDensity[0],
-				"variance":           {1.0},
-				"latest_data_values": d.LogDensity[0],
-				"cumulative":         {1},
-				"burn_in_steps":      {0},
-			}),
-			ParamsFromUpstream: map[string]simulator.NamedUpstreamConfig{
-				"mean":               {Upstream: rickerName},
-				"latest_data_values": {Upstream: "observed_data"},
-			},
-			InitStateValues:   []float64{0.0},
-			StateHistoryDepth: 2,
-			Seed:              0,
-		})
+	partitions = append(partitions, &simulator.PartitionConfig{
+		Name: llName,
+		Iteration: &stdinf.DataComparisonIteration{
+			Likelihood: &stdinf.NormalLikelihoodDistribution{},
+		},
+		Params: simulator.NewParams(map[string][]float64{
+			"mean":               d.LogDensity[0],
+			"variance":           {1.0},
+			"latest_data_values": d.LogDensity[0],
+			"cumulative":         {1},
+			"burn_in_steps":      {0},
+		}),
+		ParamsFromUpstream: map[string]simulator.NamedUpstreamConfig{
+			"mean":               {Upstream: rickerName},
+			"latest_data_values": {Upstream: "observed_data"},
+		},
+		InitStateValues:   []float64{0.0},
+		StateHistoryDepth: 2,
+		Seed:              0,
+	})
 
-		loglikePartitions[p] = llName
-
-		// Param forwarding from proposal to inner partitions
-		base := p * nParams
-		paramForwarding[rickerName+"/growth_rate"] = []int{base + 0}
-		paramForwarding[rickerName+"/density_dependence"] = []int{base + 1}
-		paramForwarding[rickerName+"/covariate_coefficients"] = []int{base + 2, base + 3, base + 4}
-		paramForwarding[rickerName+"/process_noise_sd"] = []int{base + 5}
-		paramForwarding[llName+"/variance"] = []int{base + 6}
-		paramForwarding[rickerName+"/allee_effect"] = []int{base + 7}
-	}
+	// Indices into this particle's own parameter vector.
+	paramForwarding[rickerName+"/growth_rate"] = []int{0}
+	paramForwarding[rickerName+"/density_dependence"] = []int{1}
+	paramForwarding[rickerName+"/covariate_coefficients"] = []int{2, 3, 4}
+	paramForwarding[rickerName+"/process_noise_sd"] = []int{5}
+	paramForwarding[llName+"/variance"] = []int{6}
+	paramForwarding[rickerName+"/allee_effect"] = []int{7}
+	_ = nParams
 
 	return &macros.SMCInnerSimConfig{
 		Partitions: partitions,
@@ -143,8 +135,8 @@ func buildInnerSimConfig(
 			},
 			InitTimeValue: d.Years[0],
 		},
-		LoglikePartitions: loglikePartitions,
-		ParamForwarding:   paramForwarding,
+		LoglikePartition: llName,
+		ParamForwarding:  paramForwarding,
 	}
 }
 
@@ -152,8 +144,8 @@ func buildInnerSimConfig(
 // using the stochadex SMC inference tools.
 func RunSMC(d *data.SiteData, config SMCConfig) *stdinf.SMCResult {
 	model := macros.SMCParticleModel{
-		Build: func(N int, np int) *macros.SMCInnerSimConfig {
-			return buildInnerSimConfig(d, N, np)
+		Build: func(np int) *macros.SMCInnerSimConfig {
+			return buildInnerSimConfig(d, np)
 		},
 	}
 
