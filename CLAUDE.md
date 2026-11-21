@@ -244,42 +244,41 @@ type Iteration interface {
 Simulations are defined in YAML and run via the stochadex CLI, which generates and executes Go code.
 
 ```yaml
-main:
-  partitions:
-  - name: my_partition              # unique name
-    iteration: myVar                # references a variable from extra_vars
-    params:
-      some_param: [1.0, 2.0]       # all param values are []float64
-    params_from_upstream:           # wire upstream partition output → this partition's params
-      latest_values:
-        upstream: other_partition   # name of the upstream partition
-        indices: [0, 1]            # optional: extract specific indices from upstream state
-    params_as_partitions:           # reference partition names as param values (resolved to indices)
-      data_partition: [some_partition]
-    init_state_values: [0.0, 0.0]  # initial state (determines state_width)
-    state_history_depth: 1          # rolling window size
-    seed: 1234                      # RNG seed (0 = no randomness needed)
-    extra_packages:                 # Go import paths
-    - github.com/umbralcalc/stochadex/pkg/continuous
-    extra_vars:                     # Go variable declarations
-    - myVar: "&continuous.WienerProcessIteration{}"
+partitions:
+- name: my_partition              # unique name
+  iteration: myVar                # references a variable from extra_vars
+  params:
+    some_param: [1.0, 2.0]       # all param values are []float64
+  params_from_upstream:           # wire upstream partition output → this partition's params
+    latest_values:
+      upstream: other_partition   # name of the upstream partition
+      indices: [0, 1]            # optional: extract specific indices from upstream state
+  params_as_partitions:           # reference partition names as param values (resolved to indices)
+    data_partition: [some_partition]
+  init_state_values: [0.0, 0.0]  # initial state (determines state_width)
+  state_history_depth: 1          # rolling window size
+  seed: 1234                      # RNG seed (0 = no randomness needed)
+  extra_packages:                 # Go import paths
+  - github.com/umbralcalc/stochadex/pkg/continuous
+  extra_vars:                     # Go variable declarations
+  - myVar: "&continuous.WienerProcessIteration{}"
 
-  # A partition with no iteration field is matched by name to an embedded run.
-  - name: my_embedded_sim
-    params:
-      init_time_value: [0.0]
-      burn_in_steps: [0]
-    params_from_upstream:
-      inner_partition/param_name:   # "<innerPartition>/<paramName>" syntax
-        upstream: source_partition  # forwards values to inner partition's params
-        indices: [0]               # optional index selection
+# A partition with no iteration field is matched by name to an embedded run.
+- name: my_embedded_sim
+  params:
+    init_time_value: [0.0]
+    burn_in_steps: [0]
+  params_from_upstream:
+    inner_partition/param_name:   # "<innerPartition>/<paramName>" syntax
+      upstream: source_partition  # forwards values to inner partition's params
+      indices: [0]               # optional index selection
 
-  simulation:
-    output_condition: "&simulator.EveryStepOutputCondition{}"
-    output_function: "&simulator.StdoutOutputFunction{}"
-    termination_condition: "&simulator.NumberOfStepsTerminationCondition{MaxNumberOfSteps: 100}"
-    timestep_function: "&simulator.ConstantTimestepFunction{Stepsize: 1.0}"
-    init_time_value: 0.0
+simulation:
+  output_condition: "&simulator.EveryStepOutputCondition{}"
+  output_function: "&simulator.StdoutOutputFunction{}"
+  termination_condition: "&simulator.NumberOfStepsTerminationCondition{MaxNumberOfSteps: 100}"
+  timestep_function: "&simulator.ConstantTimestepFunction{Stepsize: 1.0}"
+  init_time_value: 0.0
 
 # Embedded simulation runs — matched to main partitions by name.
 # The API wraps each with EmbeddedSimulationRunIteration automatically.
