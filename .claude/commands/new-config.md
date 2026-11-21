@@ -9,33 +9,32 @@ If $ARGUMENTS is provided, use it as a description of the desired simulation. Ot
 2. Create a YAML file in `cfg/` with the `ApiRunConfig` structure:
 
 ```yaml
-main:
-  partitions:
+partitions:
 
-  - name: <unique_name>
-    iteration: <varName>                    # references a variable from extra_vars
-    params:
-      <param_key>: [<float64 values>]       # all values are float64 arrays
-    params_from_upstream:                    # optional: wire upstream output → params
-      <param_name>:
-        upstream: <upstream_partition_name>
-        indices: [0, 1]                     # optional: select specific state indices
-    params_as_partitions:                    # optional: reference partition names
-      <param_name>: [<partition_name>]
-    init_state_values: [<float64 values>]   # determines state_width
-    state_history_depth: 1                  # rolling window size (increase if iteration reads history)
-    seed: <integer>                         # RNG seed (0 if no randomness needed)
-    extra_packages:
-    - <go import path>
-    extra_vars:
-    - <varName>: "<Go expression>"          # e.g. "&continuous.WienerProcessIteration{}"
+- name: <unique_name>
+  iteration: <varName>                    # references a variable from extra_vars
+  params:
+    <param_key>: [<float64 values>]       # all values are float64 arrays
+  params_from_upstream:                    # optional: wire upstream output → params
+    <param_name>:
+      upstream: <upstream_partition_name>
+      indices: [0, 1]                     # optional: select specific state indices
+  params_as_partitions:                    # optional: reference partition names
+    <param_name>: [<partition_name>]
+  init_state_values: [<float64 values>]   # determines state_width
+  state_history_depth: 1                  # rolling window size (increase if iteration reads history)
+  seed: <integer>                         # RNG seed (0 if no randomness needed)
+  extra_packages:
+  - <go import path>
+  extra_vars:
+  - <varName>: "<Go expression>"          # e.g. "&continuous.WienerProcessIteration{}"
 
-  simulation:
-    output_condition: "&simulator.EveryStepOutputCondition{}"
-    output_function: "&simulator.StdoutOutputFunction{}"
-    termination_condition: "&simulator.NumberOfStepsTerminationCondition{MaxNumberOfSteps: 100}"
-    timestep_function: "&simulator.ConstantTimestepFunction{Stepsize: 1.0}"
-    init_time_value: 0.0
+simulation:
+  output_condition: "&simulator.EveryStepOutputCondition{}"
+  output_function: "&simulator.StdoutOutputFunction{}"
+  termination_condition: "&simulator.NumberOfStepsTerminationCondition{MaxNumberOfSteps: 100}"
+  timestep_function: "&simulator.ConstantTimestepFunction{Stepsize: 1.0}"
+  init_time_value: 0.0
 ```
 
 3. For each partition:
